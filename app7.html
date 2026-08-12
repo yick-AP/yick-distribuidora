@@ -2516,7 +2516,7 @@ function renderClientes(){
       <div style="display:flex;gap:6px;align-items:center">
         ${c.celular?`<a href="https://wa.me/54${c.celular.replace(/\D/g,'')}" target="_blank" class="btn btn-sm btn-whatsapp">📲</a>`:''}
         <button class="btn btn-sm" onclick="abrirModalCliente('${c.id}')">✏️</button>
-        <button class="btn btn-sm btn-danger" onclick="eliminarCliente('${c.id}','${c.nombre.replace(/'/g,\'\\'\')}')">🗑</button>
+        <button class="btn btn-sm btn-danger" onclick="eliminarCliente('${c.id}')">🗑</button>
       </div>
     </div>`).join('')}</div>`;
 }
@@ -2887,13 +2887,17 @@ window.renderVentasZona=()=>{
         <div style="background:#f0f4f8;border-radius:6px;height:6px;margin-bottom:8px"><div style="background:var(--verde);height:100%;border-radius:6px;width:${pct}%"></div></div>
         <div style="font-size:11px;color:var(--gris);font-weight:600;margin-bottom:4px">Top productos:</div>
         ${topProds.map(([nombre,qty])=>`<div style="font-size:12px;display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f0f4f8"><span>${nombre}</span><strong>${qty} unid.</strong></div>`).join('')}
-        ${Object.keys(z.productos).length>5?`<button class="btn btn-sm" style="margin-top:6px;width:100%" onclick="verTodosProductosZona('${z.localidad.replace(/'/g,"\'")}',${JSON.stringify(z.productos).replace(/'/g,"\'")})">Ver todos los ${Object.keys(z.productos).length} productos →</button>`:''}
+        ${Object.keys(z.productos).length>5?`<button class="btn btn-sm" style="margin-top:6px;width:100%" onclick="verTodosProductosZona('${z.localidad.replace(/'/g,"\\'")}')">Ver todos los ${Object.keys(z.productos).length} productos →</button>`:''}
       </div>`;
     }).join('')}`;
+  window._zonasProductos={};
+  listaZonas.forEach(z=>{window._zonasProductos[z.localidad]=z.productos;});
 };
 
 // ============= ELIMINAR CLIENTA =============
-window.eliminarCliente=async(id,nombre)=>{
+window.eliminarCliente=async(id)=>{
+  const cli=clientes.find(c=>c.id===id);
+  const nombre=cli?cli.nombre:'esta clienta';
   if(!confirm(`¿Eliminar a ${nombre}? Esta acción no se puede deshacer.`)) return;
   await deleteDoc(doc(db,'clientes',id));
 };
@@ -2907,8 +2911,8 @@ document.addEventListener('DOMContentLoaded',()=>{
 });
 
 // ============= VER TODOS PRODUCTOS ZONA =============
-window.verTodosProductosZona=(localidad, productosJSON)=>{
-  const productos=typeof productosJSON==='string'?JSON.parse(productosJSON):productosJSON;
+window.verTodosProductosZona=(localidad)=>{
+  const productos=(window._zonasProductos&&window._zonasProductos[localidad])||{};
   document.getElementById('zona-detalle-titulo').textContent=`📍 ${localidad} — Todos los productos`;
   const lista=Object.entries(productos).sort((a,b)=>b[1]-a[1]);
   document.getElementById('zona-detalle-contenido').innerHTML=`
