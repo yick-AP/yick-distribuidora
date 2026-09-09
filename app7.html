@@ -224,6 +224,9 @@ input[readonly]{background:#f7fafc;color:var(--gris)}
         <input type="text" id="prod-search" placeholder="Buscar producto o código..." oninput="filtrarProductos()">
         <button class="btn btn-primary" onclick="abrirModalProducto(null)">＋</button>
       </div>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button class="btn btn-sm" id="btn-modo-seleccion" onclick="toggleSeleccionMultiple()">☑️ Selección múltiple</button>
+      </div>
       <div class="tabs">
         <button class="tab active" onclick="filterTab(this,'todos')">Todos</button>
         <button class="tab" onclick="filterTab(this,'Shampoo')">Shampoo</button>
@@ -267,6 +270,15 @@ input[readonly]{background:#f7fafc;color:var(--gris)}
               <button id="fp-contado" class="btn btn-primary" style="flex:1;justify-content:center" onclick="setFormaPago('contado')">💵 Contado</button>
               <button id="fp-cc" class="btn" style="flex:1;justify-content:center" onclick="setFormaPago('cc')">📋 Cta. Corriente</button>
             </div>
+          </div>
+          <!-- MEDIO DE PAGO (solo si es Contado) -->
+          <div id="medio-pago-wrap" style="margin-top:8px">
+            <label style="display:block;font-size:12px;font-weight:600;color:var(--gris);margin-bottom:6px">Medio de pago</label>
+            <select id="venta-medio-pago" style="width:100%">
+              <option value="Efectivo">💵 Efectivo</option>
+              <option value="Transferencia">🏦 Transferencia</option>
+              <option value="Tarjeta">💳 Tarjeta</option>
+            </select>
           </div>
           <!-- AJUSTE -->
           <div style="background:#f0f4f8;border-radius:8px;padding:10px;margin-top:8px">
@@ -518,6 +530,21 @@ input[readonly]{background:#f7fafc;color:var(--gris)}
       <div id="resultados-contenido"><div class="empty">Elegí un período para ver el estado de resultados</div></div>
     </div>
 
+    <!-- CAJA DIARIA -->
+    <div id="sec-caja" class="section">
+      <div class="section-title">💰 Caja diaria</div>
+      <div class="card" style="margin-bottom:10px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:140px">
+            <label style="font-size:11px;color:var(--gris)">Día</label>
+            <input type="date" id="caja-fecha" onchange="renderCaja()">
+          </div>
+          <button class="btn btn-sm" onclick="setCajaFecha();renderCaja()" style="margin-top:14px">Hoy</button>
+        </div>
+      </div>
+      <div id="caja-contenido"><div class="empty">Cargando caja del día...</div></div>
+    </div>
+
     <!-- CLIENTES -->
     <div id="sec-clientes" class="section">
       <div class="section-title">
@@ -571,6 +598,7 @@ input[readonly]{background:#f7fafc;color:var(--gris)}
     <div id="sec-compras" class="section">
       <div class="tabs">
         <button class="tab active" onclick="tabCompras(this,'sugeridas')">📊 Sugeridas</button>
+        <button class="tab" onclick="tabCompras(this,'periodo')">🗓️ Por período</button>
         <button class="tab" onclick="tabCompras(this,'nueva')">➕ Nueva compra</button>
         <button class="tab" onclick="tabCompras(this,'historial')">📋 Historial</button>
       </div>
@@ -596,6 +624,28 @@ input[readonly]{background:#f7fafc;color:var(--gris)}
           </div>
           <div id="lista-sugeridas"><div class="empty">Cargando...</div></div>
         </div>
+      </div>
+      <!-- POR PERÍODO -->
+      <div id="compras-periodo" style="display:none">
+        <div class="card" style="margin-bottom:10px">
+          <div class="card-header">🗓️ Lo vendido en un período, agrupado por marca</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+            <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:120px">
+              <label style="font-size:11px;color:var(--gris)">Desde</label>
+              <input type="date" id="periodo-desde" onchange="renderVentasPorPeriodo()">
+            </div>
+            <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:120px">
+              <label style="font-size:11px;color:var(--gris)">Hasta</label>
+              <input type="date" id="periodo-hasta" onchange="renderVentasPorPeriodo()">
+            </div>
+            <button class="btn btn-sm btn-primary" onclick="renderVentasPorPeriodo()" style="margin-top:14px">📊 Ver</button>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-sm" onclick="imprimirVentasPeriodo()">🖨️ Imprimir</button>
+            <button class="btn btn-sm btn-info" onclick="exportarVentasPeriodoCSV()">📊 Exportar Excel</button>
+          </div>
+        </div>
+        <div id="periodo-contenido"><div class="empty">Elegí un período para ver qué se vendió</div></div>
       </div>
       <!-- NUEVA COMPRA -->
       <div id="compras-nueva" style="display:none">
@@ -668,6 +718,10 @@ input[readonly]{background:#f7fafc;color:var(--gris)}
     <button class="nav-btn" id="nav-resultados" onclick="goSec('resultados')">
       <div class="nav-icon-wrap"><svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg></div>
       Resultados
+    </button>
+    <button class="nav-btn" id="nav-caja" onclick="goSec('caja')">
+      <div class="nav-icon-wrap"><svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M3 10h18M7 15h1m4 0h1M5 6h14a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2z"/></svg></div>
+      Caja
     </button>
     <button class="nav-btn" id="nav-inteligente" onclick="goSec('inteligente')">
       <div class="nav-icon-wrap"><svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg></div>
@@ -800,6 +854,14 @@ input[readonly]{background:#f7fafc;color:var(--gris)}
         <select id="edit-venta-forma-pago" onchange="cambiarFormaPagoEdicion()">
           <option value="contado">💵 Contado</option>
           <option value="cc">📋 Cta. Corriente</option>
+        </select>
+      </div>
+      <div class="form-group" id="edit-medio-pago-wrap">
+        <label>Medio de pago</label>
+        <select id="edit-venta-medio-pago">
+          <option value="Efectivo">💵 Efectivo</option>
+          <option value="Transferencia">🏦 Transferencia</option>
+          <option value="Tarjeta">💳 Tarjeta</option>
         </select>
       </div>
     </div>
@@ -1011,7 +1073,7 @@ let ccMovimientosTodos=[];
 let remitoActual=null, zoomLevel=1;
 let compraItems=[], csvImportado=[];
 
-const sections=['dashboard','productos','venta','remito','historial','stock','cc','compras','clientes','inteligente','gastos','resultados'];
+const sections=['dashboard','productos','venta','remito','historial','stock','cc','compras','clientes','inteligente','gastos','resultados','caja'];
 
 window.goSec=name=>{
   sections.forEach(s=>{const el=document.getElementById('sec-'+s);if(el) el.classList.remove('active')});
@@ -1030,6 +1092,7 @@ window.goSec=name=>{
   if(name==='inteligente') renderCompraInteligente();
   if(name==='gastos'){ setGastosMes(); renderGastos(); }
   if(name==='resultados'){ setResultadosMes(); renderResultados(); }
+  if(name==='caja'){ setCajaFecha(); renderCaja(); }
 };
 
 // LOAD
@@ -1116,20 +1179,66 @@ function renderProductos(){
   if(filtroCategoria!=='todos') lista=lista.filter(p=>p.categoria===filtroCategoria);
   if(s) lista=lista.filter(p=>p.nombre.toLowerCase().includes(s)||(p.barcode||'').includes(s));
   if(lista.length===0){el.innerHTML='<div class="empty">No se encontraron productos</div>';return;}
-  el.innerHTML=`<div class="card" style="padding:8px 14px">${lista.map(p=>{
+  if(!window._prodSeleccionados) window._prodSeleccionados=new Set();
+  const modoSel=!!window._modoSeleccion;
+  const idsFiltrados=lista.map(p=>p.id);
+  const todosMarcados=idsFiltrados.length>0&&idsFiltrados.every(id=>window._prodSeleccionados.has(id));
+  const cantSel=window._prodSeleccionados.size;
+  el.innerHTML=`
+    ${modoSel?`<div class="card" style="padding:10px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+        <input type="checkbox" ${todosMarcados?'checked':''} onchange="toggleSeleccionarTodos(this.checked)" style="width:auto">
+        Seleccionar los ${idsFiltrados.length} filtrados
+      </label>
+      ${cantSel>0?`<button class="btn btn-sm btn-danger" onclick="eliminarSeleccionados()">🗑 Eliminar ${cantSel} seleccionado${cantSel!==1?'s':''}</button>`:''}
+    </div>`:''}
+    <div class="card" style="padding:8px 14px">${lista.map(p=>{
     const bc=(p.stock_actual||0)<=(p.stock_minimo||5)*0.3?'badge-red':(p.stock_actual||0)<=(p.stock_minimo||5)?'badge-amber':'badge-green';
+    const marcado=window._prodSeleccionados.has(p.id);
     return `<div class="product-row">
+      ${modoSel?`<input type="checkbox" ${marcado?'checked':''} onchange="toggleProductoSeleccionado('${p.id}',this.checked)" style="width:auto;margin-right:4px">`:''}
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.nombre}</div>
         <div style="font-size:11px;color:var(--gris)">${p.marca||''} ${p.categoria?'· '+p.categoria:''}</div>
         <div style="font-size:11px;color:var(--verde);margin-top:2px">Pub:$${(p.precio_publico||0).toLocaleString('es-AR')} · Zona:$${(p.precio_prof_contado||0).toLocaleString('es-AR')} · CC:$${(p.precio_prof_cc||0).toLocaleString('es-AR')}</div>
       </div>
       <span class="badge ${bc}">${p.stock_actual||0}</span>
-      <button class="btn btn-sm" onclick="abrirModalProducto('${p.id}')">✏️</button>
-      <button class="btn btn-sm btn-danger" onclick="eliminarProducto('${p.id}')">🗑</button>
+      ${modoSel?'':`<button class="btn btn-sm" onclick="abrirModalProducto('${p.id}')">✏️</button>
+      <button class="btn btn-sm btn-danger" onclick="eliminarProducto('${p.id}')">🗑</button>`}
     </div>`;
   }).join('')}</div>`;
 }
+window.toggleSeleccionMultiple=()=>{
+  window._modoSeleccion=!window._modoSeleccion;
+  if(!window._modoSeleccion) window._prodSeleccionados=new Set();
+  const btn=document.getElementById('btn-modo-seleccion');
+  if(btn) btn.className='btn btn-sm'+(window._modoSeleccion?' btn-primary':'');
+  renderProductos();
+};
+window.toggleProductoSeleccionado=(id,checked)=>{
+  if(!window._prodSeleccionados) window._prodSeleccionados=new Set();
+  if(checked) window._prodSeleccionados.add(id); else window._prodSeleccionados.delete(id);
+  renderProductos();
+};
+window.toggleSeleccionarTodos=(checked)=>{
+  const s=(document.getElementById('prod-search')?.value||'').toLowerCase();
+  let lista=productos;
+  if(filtroCategoria!=='todos') lista=lista.filter(p=>p.categoria===filtroCategoria);
+  if(s) lista=lista.filter(p=>p.nombre.toLowerCase().includes(s)||(p.barcode||'').includes(s));
+  if(!window._prodSeleccionados) window._prodSeleccionados=new Set();
+  lista.forEach(p=>{ if(checked) window._prodSeleccionados.add(p.id); else window._prodSeleccionados.delete(p.id); });
+  renderProductos();
+};
+window.eliminarSeleccionados=async()=>{
+  const ids=Array.from(window._prodSeleccionados||[]);
+  if(ids.length===0) return;
+  if(!confirm(`¿Eliminar ${ids.length} producto${ids.length!==1?'s':''}? Esta acción no se puede deshacer.`)) return;
+  for(const id of ids){
+    await deleteDoc(doc(db,'productos',id));
+  }
+  window._prodSeleccionados=new Set();
+  alert('✅ Productos eliminados');
+};
 window.abrirModalProducto=id=>{
   document.getElementById('prod-id-edit').value=id||'';
   if(id){
@@ -1220,6 +1329,8 @@ window.setFormaPago=tipo=>{
   const btnCC=document.getElementById('fp-cc');
   if(btnC) btnC.className='btn'+(tipo==='contado'?' btn-primary':'');
   if(btnCC) btnCC.className='btn'+(tipo==='cc'?' btn-primary':'');
+  const wrap=document.getElementById('medio-pago-wrap');
+  if(wrap) wrap.style.display=(tipo==='contado')?'block':'none';
 };
 
 // VENTAS
@@ -1311,8 +1422,8 @@ function renderCarrito(){
           <span style="font-size:11px;color:var(--gris)">c/u</span>
         </div>
       </div>
-      <div class="qty-ctrl"><button onclick="cambiarQty(${i},-1)">−</button><span>${c.qty}</span><button onclick="cambiarQty(${i},1)">+</button></div>
-      <div style="font-weight:700;min-width:65px;text-align:right">$${(c.precio*c.qty).toLocaleString('es-AR')}</div>
+      <div class="qty-ctrl"><button onclick="cambiarQty(${i},-1)">−</button><input type="number" min="1" value="${c.qty}" oninput="editarQtyCarrito(${i},this.value)" style="width:44px;text-align:center;font-weight:700;border:1px solid var(--borde);border-radius:6px;padding:2px"><button onclick="cambiarQty(${i},1)">+</button></div>
+      <div style="font-weight:700;min-width:65px;text-align:right" id="item-subtotal-${i}">$${(c.precio*c.qty).toLocaleString('es-AR')}</div>
       <button class="btn btn-sm btn-danger" onclick="quitarCarrito(${i})">🗑</button>
     </div>`).join('');
   document.getElementById('total-display').textContent='$'+calcularTotalCarrito().toLocaleString('es-AR');
@@ -1334,11 +1445,12 @@ window.finalizarVenta=async()=>{
   const total=calcularTotalCarrito();
   const ajusteInfo=contadoAjuste.pct>0?{tipo:contadoAjuste.tipo,pct:contadoAjuste.pct}:null;
   const listaGuardada=formaPago==='cc'?'prof_cc':listaActiva;
+  const medioPago=formaPago==='contado'?(document.getElementById('venta-medio-pago')?.value||'Efectivo'):null;
   const fechaVentaStr=document.getElementById('venta-fecha')?.value;
   const fechaVenta=fechaVentaStr?Timestamp.fromDate(new Date(fechaVentaStr+'T12:00:00')):Timestamp.now();
   const data={
     cliente, lista:listaGuardada, lista_precio:listaActiva,
-    forma_pago:formaPago, total,
+    forma_pago:formaPago, medio_pago:medioPago, total,
     items:carrito.map(c=>({...c})),
     fecha:fechaVenta, nro:nroRemito, anulada:false,
     ajuste:ajusteInfo, estado_factura:'remito'
@@ -1356,6 +1468,13 @@ window.finalizarVenta=async()=>{
 // NUEVAS FUNCIONES
 window.editarPrecioCarrito=(i,val)=>{
   carrito[i].precio=parseFloat(val)||0;
+  document.getElementById('total-display').textContent='$'+calcularTotalCarrito().toLocaleString('es-AR');
+};
+window.editarQtyCarrito=(i,val)=>{
+  const q=parseInt(val)||1;
+  carrito[i].qty=Math.max(1,q);
+  const sub=document.getElementById('item-subtotal-'+i);
+  if(sub) sub.textContent='$'+(carrito[i].precio*carrito[i].qty).toLocaleString('es-AR');
   document.getElementById('total-display').textContent='$'+calcularTotalCarrito().toLocaleString('es-AR');
 };
 
@@ -1657,6 +1776,11 @@ window.abrirEditarVenta=id=>{
   const formaPagoActual=ventaEditando.forma_pago||(ventaEditando.lista==='prof_cc'?'cc':'contado');
   document.getElementById('edit-venta-lista').value=listaPrecio==='prof_cc'?'prof_cc':(listaPrecio==='contado'?'prof_cc':listaPrecio);
   document.getElementById('edit-venta-forma-pago').value=formaPagoActual;
+  const medioPagoActual=ventaEditando.medio_pago||'Efectivo';
+  const mpSel=document.getElementById('edit-venta-medio-pago');
+  if(mpSel) mpSel.value=medioPagoActual;
+  const mpWrap=document.getElementById('edit-medio-pago-wrap');
+  if(mpWrap) mpWrap.style.display=(formaPagoActual==='contado')?'block':'none';
   actualizarInfoFormaPago(formaPagoActual);
   renderEditItems();
   document.getElementById('modal-editar-venta').classList.add('open');
@@ -1676,7 +1800,10 @@ function actualizarInfoFormaPago(forma){
 }
 
 window.cambiarFormaPagoEdicion=()=>{
-  actualizarInfoFormaPago(document.getElementById('edit-venta-forma-pago').value);
+  const tipo=document.getElementById('edit-venta-forma-pago').value;
+  actualizarInfoFormaPago(tipo);
+  const wrap=document.getElementById('edit-medio-pago-wrap');
+  if(wrap) wrap.style.display=(tipo==='contado')?'block':'none';
 };
 
 function renderEditItems(){
@@ -1684,13 +1811,21 @@ function renderEditItems(){
   document.getElementById('edit-venta-items').innerHTML=ventaEditando.items.map((item,i)=>`
     <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:6px;align-items:center;padding:8px 0;border-bottom:1px solid #f0f4f8;font-size:13px">
       <div><div style="font-weight:600">${item.nombre}</div><div style="font-size:11px;color:var(--gris)">$${(item.precio||0).toLocaleString('es-AR')} c/u</div></div>
-      <div class="qty-ctrl"><button onclick="editQty(${i},-1)">−</button><span id="eqty-${i}">${item.qty}</span><button onclick="editQty(${i},1)">+</button></div>
+      <div class="qty-ctrl"><button onclick="editQty(${i},-1)">−</button><input type="number" min="1" value="${item.qty}" oninput="editarQtyEdit(${i},this.value)" style="width:44px;text-align:center;font-weight:700;border:1px solid var(--borde);border-radius:6px;padding:2px"><button onclick="editQty(${i},1)">+</button></div>
       <div style="min-width:65px;text-align:right;font-weight:700" id="esub-${i}">$${((item.precio||0)*item.qty).toLocaleString('es-AR')}</div>
       <button class="btn btn-sm btn-danger" onclick="editQuitar(${i})">🗑</button>
     </div>`).join('');
   document.getElementById('edit-total').textContent='$'+ventaEditando.items.reduce((s,it)=>s+(it.precio||0)*it.qty,0).toLocaleString('es-AR');
 }
 window.editQty=(i,d)=>{ventaEditando.items[i].qty=Math.max(1,ventaEditando.items[i].qty+d);renderEditItems();};
+window.editarQtyEdit=(i,val)=>{
+  const q=parseInt(val)||1;
+  ventaEditando.items[i].qty=Math.max(1,q);
+  const sub=document.getElementById('esub-'+i);
+  if(sub) sub.textContent='$'+((ventaEditando.items[i].precio||0)*ventaEditando.items[i].qty).toLocaleString('es-AR');
+  const totalEl=document.getElementById('edit-total');
+  if(totalEl) totalEl.textContent='$'+ventaEditando.items.reduce((s,it)=>s+(it.precio||0)*it.qty,0).toLocaleString('es-AR');
+};
 window.editQuitar=i=>{ventaEditando.items.splice(i,1);if(ventaEditando.items.length===0){alert('Debe quedar al menos un producto');return;}renderEditItems();};
 window.cambiarListaEdicion=()=>{
   const nuevaLista=document.getElementById('edit-venta-lista').value;
@@ -1709,6 +1844,7 @@ window.guardarEdicionVenta=async()=>{
   const nuevoTotal=ventaEditando.items.reduce((s,it)=>s+(it.precio||0)*it.qty,0);
   const nuevaLista=document.getElementById('edit-venta-lista').value;
   const nuevaForma=document.getElementById('edit-venta-forma-pago').value;
+  const nuevoMedioPago=nuevaForma==='contado'?(document.getElementById('edit-venta-medio-pago')?.value||'Efectivo'):null;
   // si es cc → lista guardada como prof_cc, sino la lista elegida
   const listaGuardada=nuevaForma==='cc'?'prof_cc':nuevaLista;
 
@@ -1729,7 +1865,8 @@ window.guardarEdicionVenta=async()=>{
     total:nuevoTotal,
     lista:listaGuardada,
     lista_precio:nuevaLista,
-    forma_pago:nuevaForma
+    forma_pago:nuevaForma,
+    medio_pago:nuevoMedioPago
   });
   cerrarModal('modal-editar-venta');
   ventaEditando=null;
@@ -2006,11 +2143,12 @@ window.guardarSaldoInicial=async()=>{
 window.tabCompras=(btn,tab)=>{
   document.querySelectorAll('#sec-compras .tab').forEach(t=>t.classList.remove('active'));
   btn.classList.add('active');
-  ['sugeridas','nueva','historial'].forEach(t=>{
+  ['sugeridas','periodo','nueva','historial'].forEach(t=>{
     const el=document.getElementById('compras-'+t);
     if(el) el.style.display=t===tab?'block':'none';
   });
   if(tab==='sugeridas') renderComprasSugeridas();
+  if(tab==='periodo') setPeriodoCompra();
   if(tab==='historial') renderHistorialCompras();
   if(tab==='nueva'){
     compraItems=[];
@@ -2120,6 +2258,117 @@ function getListaParaExportar(){
     pedido:parseInt(document.getElementById('sug-qty-'+p.id)?.value)||window.sugeridosEditados?.[p.id]||0
   })).filter(p=>p.pedido>0);
 }
+
+// =================== VENDIDO POR PERÍODO (agrupado por marca) ===================
+window.setPeriodoCompra=()=>{
+  const d=document.getElementById('periodo-desde');
+  const h=document.getElementById('periodo-hasta');
+  if(d&&!d.value){const hoy=new Date();d.value=new Date(hoy.getFullYear(),hoy.getMonth(),1).toISOString().slice(0,10);}
+  if(h&&!h.value) h.value=new Date().toISOString().slice(0,10);
+  renderVentasPorPeriodo();
+};
+
+function calcularVendidoPorPeriodo(){
+  const desdeStr=document.getElementById('periodo-desde')?.value;
+  const hastaStr=document.getElementById('periodo-hasta')?.value;
+  if(!desdeStr&&!hastaStr) return null;
+  const desde=desdeStr?new Date(desdeStr+'T00:00:00'):null;
+  const hasta=hastaStr?new Date(hastaStr+'T23:59:59'):null;
+  let ventasFilt=ventas.filter(v=>!v.anulada&&v.tipo!=='saldo_inicial');
+  if(desde) ventasFilt=ventasFilt.filter(v=>v.fecha?.toDate&&v.fecha.toDate()>=desde);
+  if(hasta) ventasFilt=ventasFilt.filter(v=>v.fecha?.toDate&&v.fecha.toDate()<=hasta);
+
+  // Agrupar por marca → producto
+  const marcas={};
+  ventasFilt.forEach(v=>{
+    (v.items||[]).forEach(item=>{
+      const prod=productos.find(p=>p.id===item.id);
+      const marca=prod?.marca||'Sin marca';
+      const key=item.id||item.nombre;
+      if(!marcas[marca]) marcas[marca]={marca,items:{},total:0};
+      if(!marcas[marca].items[key]) marcas[marca].items[key]={nombre:item.nombre,qty:0,stockActual:prod?.stock_actual};
+      marcas[marca].items[key].qty+=(item.qty||0);
+      marcas[marca].total+=(item.qty||0);
+    });
+  });
+  const listaMarcas=Object.values(marcas).sort((a,b)=>b.total-a.total).map(m=>({
+    marca:m.marca,
+    total:m.total,
+    productos:Object.values(m.items).sort((a,b)=>b.qty-a.qty)
+  }));
+  return {desdeStr,hastaStr,listaMarcas,cantVentas:ventasFilt.length};
+}
+
+window.renderVentasPorPeriodo=()=>{
+  const el=document.getElementById('periodo-contenido'); if(!el) return;
+  const data=calcularVendidoPorPeriodo();
+  if(!data){el.innerHTML='<div class="empty">Elegí un período</div>';return;}
+  if(data.listaMarcas.length===0){el.innerHTML='<div class="empty">Sin ventas en este período</div>';return;}
+  window._periodoData=data;
+  el.innerHTML=`
+    <div style="background:var(--verde-light);border-radius:8px;padding:10px 14px;margin-bottom:12px">
+      <div style="font-size:12px;color:var(--verde-dark);font-weight:600">${data.cantVentas} ventas · ${data.desdeStr||'inicio'} al ${data.hastaStr||'hoy'}</div>
+    </div>
+    ${data.listaMarcas.map(m=>`
+      <div style="background:#fff;border-radius:10px;border:1px solid var(--borde);padding:12px;margin-bottom:8px">
+        <div style="font-weight:700;font-size:14px;margin-bottom:8px">🏷️ ${m.marca} <span style="font-weight:400;font-size:11px;color:var(--gris)">· ${m.total} unid. vendidas</span></div>
+        ${m.productos.map(p=>`
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f0f4f8;font-size:13px">
+            <span>${p.nombre}</span>
+            <span style="display:flex;gap:10px;align-items:center">
+              <strong>${p.qty} unid.</strong>
+              ${p.stockActual!==undefined?`<span style="font-size:11px;color:var(--gris)">Stock: ${p.stockActual}</span>`:''}
+            </span>
+          </div>`).join('')}
+      </div>`).join('')}`;
+};
+
+window.imprimirVentasPeriodo=()=>{
+  const data=window._periodoData||calcularVendidoPorPeriodo();
+  if(!data||data.listaMarcas.length===0){alert('No hay datos para imprimir. Elegí un período primero.');return;}
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Vendido por período</title>
+  <style>
+    body{font-family:system-ui,sans-serif;padding:24px;color:#1a202c}
+    h2{color:#1D9E75;margin-bottom:4px}
+    p{color:#718096;font-size:13px;margin-bottom:20px}
+    h3{color:#1D9E75;font-size:14px;margin:18px 0 6px;border-bottom:2px solid #1D9E75;padding-bottom:4px}
+    table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px}
+    th{padding:6px 8px;text-align:left;font-size:11px;text-transform:uppercase;color:#718096;border-bottom:1px solid #e2e8f0}
+    th:not(:first-child){text-align:right}
+    td{padding:6px 8px;border-bottom:1px solid #f0f4f8}
+    td:not(:first-child){text-align:right}
+    .footer{margin-top:20px;font-size:11px;color:#a0aec0;text-align:center}
+  </style></head><body>
+  <h2>📦 Yick Distribuidora · Vendido por período</h2>
+  <p>Del ${data.desdeStr||'inicio'} al ${data.hastaStr||'hoy'} · ${data.cantVentas} ventas</p>
+  ${data.listaMarcas.map(m=>`
+    <h3>${m.marca} · ${m.total} unidades</h3>
+    <table><thead><tr><th>Producto</th><th>Vendido</th><th>Stock actual</th></tr></thead>
+    <tbody>${m.productos.map(p=>`<tr><td>${p.nombre}</td><td>${p.qty}</td><td>${p.stockActual!==undefined?p.stockActual:'-'}</td></tr>`).join('')}</tbody></table>`).join('')}
+  <div class="footer">Generado el ${new Date().toLocaleDateString('es-AR')}</div>
+  <script>window.print()<\/script>
+  </body></html>`);
+  w.document.close();
+};
+
+window.exportarVentasPeriodoCSV=()=>{
+  const data=window._periodoData||calcularVendidoPorPeriodo();
+  if(!data||data.listaMarcas.length===0){alert('No hay datos para exportar. Elegí un período primero.');return;}
+  const encabezado='Marca\tProducto\tCantidad vendida\tStock actual';
+  const filas=[];
+  data.listaMarcas.forEach(m=>{
+    m.productos.forEach(p=>{
+      filas.push([m.marca,p.nombre,p.qty,p.stockActual!==undefined?p.stockActual:''].join('\t'));
+    });
+  });
+  const csv=encabezado+'\n'+filas.join('\n');
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=`vendido-${data.desdeStr||'periodo'}-a-${data.hastaStr||'hoy'}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+};
 
 window.armarListaCompra=()=>{
   const lista=getListaParaExportar();
@@ -3162,6 +3411,91 @@ window.renderResultados=()=>{
         <div style="font-size:28px;font-weight:800;color:${gananciaNeta>=0?'#065f46':'#dc2626'}">$${Math.abs(gananciaNeta).toLocaleString('es-AR')}</div>
         <div style="font-size:13px;color:${gananciaNeta>=0?'#065f46':'#991b1b'};margin-top:4px">${gananciaNeta>=0?'Ganancia':'Pérdida'} · Margen neto: ${margenNeto}%</div>
         <div style="font-size:11px;color:var(--gris);margin-top:8px">⚠️ Para mayor precisión asegurate de tener el costo de cada producto cargado en el sistema</div>
+      </div>
+    </div>`;
+};
+
+// =================== CAJA DIARIA ===================
+window.setCajaFecha=()=>{
+  const f=document.getElementById('caja-fecha');
+  if(f) f.value=new Date().toISOString().slice(0,10);
+};
+
+window.renderCaja=()=>{
+  const el=document.getElementById('caja-contenido'); if(!el) return;
+  const fechaStr=document.getElementById('caja-fecha')?.value;
+  if(!fechaStr){el.innerHTML='<div class="empty">Elegí un día</div>';return;}
+  const desde=new Date(fechaStr+'T00:00:00');
+  const hasta=new Date(fechaStr+'T23:59:59');
+
+  // Ventas del día (no anuladas, sin contar saldos iniciales)
+  const ventasHoy=ventas.filter(v=>!v.anulada&&v.tipo!=='saldo_inicial'&&v.fecha?.toDate&&v.fecha.toDate()>=desde&&v.fecha.toDate()<=hasta);
+  const ventasContadoHoy=ventasHoy.filter(v=>v.forma_pago==='contado');
+
+  // Cobros de Cta. Corriente del día (dinero de ventas viejas)
+  const pagosHoy=pagosCC.filter(p=>p.fecha?.toDate&&p.fecha.toDate()>=desde&&p.fecha.toDate()<=hasta);
+
+  // Agrupar por medio de pago: ventas contado (medio_pago) + cobros CC (forma, 'Dinero'→Efectivo)
+  const porMedio={Efectivo:0,Transferencia:0,Tarjeta:0,Cheque:0};
+  ventasContadoHoy.forEach(v=>{
+    const m=v.medio_pago||'Efectivo';
+    if(porMedio[m]===undefined) porMedio[m]=0;
+    porMedio[m]+=(v.total||0);
+  });
+  pagosHoy.forEach(p=>{
+    const m=p.forma==='Dinero'?'Efectivo':(p.forma||'Efectivo');
+    if(porMedio[m]===undefined) porMedio[m]=0;
+    porMedio[m]+=(p.monto||0);
+  });
+  const totalCobradoHoy=Object.values(porMedio).reduce((s,v)=>s+v,0);
+
+  // Ganancia: solo sobre lo VENDIDO hoy (no sobre cobros de CC de ventas viejas)
+  const totalVendidoHoy=ventasHoy.reduce((s,v)=>s+(v.total||0),0);
+  let cmvHoy=0;
+  ventasHoy.forEach(v=>{
+    (v.items||[]).forEach(item=>{
+      const prod=productos.find(p=>p.id===item.id);
+      const costo=prod?.costo||item.costo||0;
+      cmvHoy+=costo*(item.qty||1);
+    });
+  });
+  // 5% flete: sobre todo lo vendido hoy (Público, Zona y Sunchales)
+  const baseFlete=totalVendidoHoy;
+  const flete=baseFlete*0.05;
+  const gananciaNetaHoy=totalVendidoHoy-cmvHoy-flete;
+
+  const fila=(label,valor,color)=>`
+    <tr><td style="padding:4px 0;color:var(--gris);font-size:13px">${label}</td><td style="text-align:right;padding:4px 0;font-size:13px;font-weight:600;color:${color||'var(--texto)'}">$${Math.abs(valor).toLocaleString('es-AR')}</td></tr>`;
+
+  const cardMedio=(label,icono,valor)=>`
+    <div style="background:#f0f4f8;border-radius:8px;padding:10px">
+      <div style="font-size:11px;color:var(--gris);margin-bottom:4px">${icono} ${label}</div>
+      <div style="font-size:17px;font-weight:700">$${valor.toLocaleString('es-AR')}</div>
+    </div>`;
+
+  el.innerHTML=`
+    <div class="card" style="margin-bottom:10px">
+      <div style="font-size:14px;font-weight:700;margin-bottom:12px">💰 Caja del ${fechaStr}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        ${cardMedio('Efectivo','💵',porMedio.Efectivo)}
+        ${cardMedio('Transferencia','🏦',porMedio.Transferencia)}
+        ${cardMedio('Tarjeta','💳',porMedio.Tarjeta)}
+        ${porMedio.Cheque>0?cardMedio('Cheque','📝',porMedio.Cheque):`<div style="background:var(--verde);border-radius:8px;padding:10px;color:#fff"><div style="font-size:11px;opacity:.9;margin-bottom:4px">TOTAL COBRADO HOY</div><div style="font-size:17px;font-weight:700">$${totalCobradoHoy.toLocaleString('es-AR')}</div></div>`}
+      </div>
+      ${porMedio.Cheque>0?`<div style="background:var(--verde);border-radius:8px;padding:10px;color:#fff;margin-bottom:10px"><div style="font-size:11px;opacity:.9;margin-bottom:4px">TOTAL COBRADO HOY</div><div style="font-size:17px;font-weight:700">$${totalCobradoHoy.toLocaleString('es-AR')}</div></div>`:''}
+      <div style="font-size:11px;color:var(--gris);margin-bottom:10px">Incluye ventas contado + cobros de Cta. Corriente de hoy</div>
+
+      <div style="background:#f0f4f8;border-radius:8px;padding:10px">
+        <div style="font-size:12px;font-weight:700;color:var(--gris);margin-bottom:6px;text-transform:uppercase">De lo vendido hoy (sin contar cobros de Cta. Cte.)</div>
+        <table style="width:100%;border-collapse:collapse">
+          ${fila('Total vendido hoy',totalVendidoHoy)}
+          ${fila('Costo de mercadería vendida',cmvHoy,'#dc2626')}
+          ${fila('5% flete (sobre todo lo vendido hoy)',flete,'#dc2626')}
+        </table>
+        <div style="border-top:1px solid #dde3ea;margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:13px;font-weight:700">Ganancia neta de hoy</span>
+          <span style="font-size:19px;font-weight:800;color:${gananciaNetaHoy>=0?'var(--verde)':'#dc2626'}">$${Math.abs(gananciaNetaHoy).toLocaleString('es-AR')}</span>
+        </div>
       </div>
     </div>`;
 };
