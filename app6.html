@@ -458,6 +458,13 @@ input[readonly]{background:#f7fafc;color:var(--gris)}
       <!-- CLIENTES A CONTACTAR -->
       <div id="inteligente-contactar" style="display:none">
         <div class="info-box info" style="margin-bottom:10px">📲 Estos clientes probablemente necesiten reposición pronto. Contactalos antes de hacer el pedido al proveedor.</div>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+          <label style="font-size:12px;color:var(--gris)">Zona:</label>
+          <select id="ci-zona-filtro" onchange="renderClientesContactar()" style="flex:1">
+            <option value="">Todas las zonas</option>
+          </select>
+        </div>
+        <div id="ci-zona-resumen" style="display:none;margin-bottom:10px"></div>
         <div id="ci-contactar-lista"><div class="empty">Analizando...</div></div>
       </div>
 
@@ -535,9 +542,13 @@ input[readonly]{background:#f7fafc;color:var(--gris)}
       <div class="section-title">💰 Caja diaria</div>
       <div class="card" style="margin-bottom:10px">
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:140px">
-            <label style="font-size:11px;color:var(--gris)">Día</label>
-            <input type="date" id="caja-fecha" onchange="renderCaja()">
+          <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:120px">
+            <label style="font-size:11px;color:var(--gris)">Desde</label>
+            <input type="date" id="caja-desde" onchange="renderCaja()">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:120px">
+            <label style="font-size:11px;color:var(--gris)">Hasta</label>
+            <input type="date" id="caja-hasta" onchange="renderCaja()">
           </div>
           <button class="btn btn-sm" onclick="setCajaFecha();renderCaja()" style="margin-top:14px">Hoy</button>
         </div>
@@ -1274,13 +1285,23 @@ window.recalcularPrecios=()=>{
 window.guardarProducto=async()=>{
   const nombre=document.getElementById('p-nombre').value.trim();
   if(!nombre){alert('El nombre es obligatorio');return;}
+  const eid=document.getElementById('prod-id-edit').value;
+  const stockVal=document.getElementById('p-stock').value;
+  let stockFinal;
+  if(stockVal===''){
+    // Campo vacío: nunca pisar el stock existente con 0. Si es producto nuevo, arranca en 0.
+    const existente=eid?productos.find(x=>x.id===eid):null;
+    stockFinal=existente?(existente.stock_actual||0):0;
+  } else {
+    stockFinal=parseInt(stockVal)||0;
+  }
   const data={
     nombre,marca:document.getElementById('p-marca').value,
     categoria:document.getElementById('p-categoria').value,
     barcode:document.getElementById('p-barcode').value,
     proveedor:document.getElementById('p-proveedor').value,
     costo:parseFloat(document.getElementById('p-costo').value)||0,
-    stock_actual:parseInt(document.getElementById('p-stock').value)||0,
+    stock_actual:stockFinal,
     stock_minimo:parseInt(document.getElementById('p-stock-min').value)||5,
     pct_publico:parseFloat(document.getElementById('pct-pub').value)||0,
     pct_prof_contado:parseFloat(document.getElementById('pct-pc').value)||0,
@@ -1289,7 +1310,6 @@ window.guardarProducto=async()=>{
     precio_prof_contado:parseFloat(document.getElementById('precio-pc').value)||0,
     precio_prof_cc:parseFloat(document.getElementById('precio-cc').value)||0,
   };
-  const eid=document.getElementById('prod-id-edit').value;
   if(eid) await updateDoc(doc(db,'productos',eid),data);
   else await addDoc(collection(db,'productos'),data);
   cerrarModal('modal-producto');
@@ -2493,18 +2513,23 @@ window.confirmarCompra=async()=>{
     total, items:compraItems.map(it=>({...it}))
   };
   await addDoc(collection(db,'compras'),compraData);
-  // actualizar stock y costo de cada producto
-  for(const item of compraItems){
-    if(item.prod_id){
-      const p=productos.find(x=>x.id===item.prod_id);
-      if(p){
-        const updates={stock_actual:(p.stock_actual||0)+(item.qty||1)};
-        if(item.costo>0) updates.costo=item.costo;
-        await updateDoc(doc(db,'productos',item.prod_id),updates);
-      }
+  // actualizar stock y costo de cada producto (agrupando cantidades si el mismo producto aparece más de una vez en esta compra)
+  const acumulado={};
+  compraItems.forEach(item=>{
+    if(!item.prod_id) return;
+    if(!acumulado[item.prod_id]) acumulado[item.prod_id]={qty:0,costo:0};
+    acumulado[item.prod_id].qty+=(item.qty||1);
+    if(item.costo>0) acumulado[item.prod_id].costo=item.costo;
+  });
+  for(const prod_id in acumulado){
+    const p=productos.find(x=>x.id===prod_id);
+    if(p){
+      const updates={stock_actual:(p.stock_actual||0)+acumulado[prod_id].qty};
+      if(acumulado[prod_id].costo>0) updates.costo=acumulado[prod_id].costo;
+      await updateDoc(doc(db,'productos',prod_id),updates);
     }
   }
-  alert(`✅ Compra registrada. Stock actualizado para ${compraItems.filter(i=>i.prod_id).length} productos.`);
+  alert(`✅ Compra registrada. Stock actualizado para ${Object.keys(acumulado).length} productos.`);
   compraItems=[];
   renderCompraItems();
   document.getElementById('compra-proveedor').value='';
@@ -2871,7 +2896,7 @@ function analizarPatronesCliente(){
       if(!porClienteProd[key]) porClienteProd[key]={
         cliente:v.cliente,producto:item.nombre,compras:[]
       };
-      porClienteProd[key].compras.push({fecha,qty:item.qty});
+      porClienteProd[key].compras.push({fecha,qty:item.qty,precio:item.precio||0});
     });
   });
   // Calcular frecuencia y próxima compra estimada
@@ -2880,6 +2905,7 @@ function analizarPatronesCliente(){
     const n=p.compras.length;
     p.ultimaCompra=p.compras[n-1].fecha;
     p.ultimaCantidad=p.compras[n-1].qty;
+    p.ultimoPrecio=p.compras[n-1].precio||0;
     p.diasDesdeUltima=Math.floor((new Date()-p.ultimaCompra)/(1000*60*60*24));
     if(n>=2){
       // calcular frecuencia promedio entre compras
@@ -3003,10 +3029,42 @@ window.renderCompraInteligente=()=>{
 
 window.renderClientesContactar=()=>{
   const el=document.getElementById('ci-contactar-lista'); if(!el) return;
+
+  // Poblar selector de zonas (solo la primera vez / si cambió la lista de clientes)
+  const zonaSel=document.getElementById('ci-zona-filtro');
+  if(zonaSel && zonaSel.options.length<=1){
+    const zonas=[...new Set(clientes.map(c=>c.localidad).filter(Boolean))].sort();
+    zonas.forEach(z=>{
+      const opt=document.createElement('option'); opt.value=z; opt.textContent=z;
+      zonaSel.appendChild(opt);
+    });
+  }
+  const zonaElegida=zonaSel?.value||'';
+
   const patrones=analizarPatronesCliente();
-  const lista=patrones
-    .filter(p=>p.confiable&&(p.probabilidad==='Alta'||p.probabilidad==='Media'))
-    .sort((a,b)=>{const ord={'Alta':0,'Media':1};return (ord[a.probabilidad]||99)-(ord[b.probabilidad]||99);});
+  let lista=patrones
+    .filter(p=>p.confiable&&(p.probabilidad==='Alta'||p.probabilidad==='Media'));
+  if(zonaElegida){
+    const nombresZona=new Set(clientes.filter(c=>c.localidad===zonaElegida).map(c=>c.nombre));
+    lista=lista.filter(p=>nombresZona.has(p.cliente));
+  }
+  lista=lista.sort((a,b)=>{const ord={'Alta':0,'Media':1};return (ord[a.probabilidad]||99)-(ord[b.probabilidad]||99);});
+
+  // Resumen de venta estimada (solo cuando hay una zona elegida)
+  const resumenEl=document.getElementById('ci-zona-resumen');
+  if(zonaElegida && resumenEl){
+    const totalEstimado=lista.reduce((s,p)=>s+(p.ultimaCantidad*p.ultimoPrecio),0);
+    const clientesUnicos=new Set(lista.map(p=>p.cliente)).size;
+    resumenEl.style.display='block';
+    resumenEl.innerHTML=`<div class="card" style="background:var(--verde-light);padding:12px 14px">
+      <div style="font-size:12px;color:var(--verde-dark);font-weight:600;margin-bottom:4px">📍 Pronóstico para ${zonaElegida}</div>
+      <div style="font-size:22px;font-weight:800;color:var(--verde-dark)">$${totalEstimado.toLocaleString('es-AR')}</div>
+      <div style="font-size:11px;color:var(--gris);margin-top:2px">${clientesUnicos} clienta${clientesUnicos!==1?'s':''} con compra probable · según su último precio y cantidad comprada</div>
+    </div>`;
+  } else if(resumenEl){
+    resumenEl.style.display='none';
+  }
+
   if(lista.length===0){el.innerHTML='<div class="empty">No hay suficientes datos de compras repetidas aún.</div>';return;}
   // agrupar por cliente
   const porCliente={};
@@ -3026,12 +3084,14 @@ window.renderClientesContactar=()=>{
     const localidad=localidadCliente(cg.cliente);
     const colorProb=cg.maxProb==='Alta'?'#dc2626':'#d97706';
     const prodResumen=cg.productos.map(p=>p.producto).slice(0,2).join(', ')+(cg.productos.length>2?` +${cg.productos.length-2} más`:'');
+    const montoEstimado=cg.productos.reduce((s,p)=>s+(p.ultimaCantidad*p.ultimoPrecio),0);
     return `<div style="padding:10px 0;border-bottom:1px solid #f0f4f8">
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
         <div style="flex:1">
           <div style="font-weight:700;font-size:14px">${cg.cliente}</div>
           ${localidad?`<div style="font-size:11px;color:var(--gris)">📍 ${localidad}</div>`:''}
           <div style="font-size:11px;color:var(--gris);margin-top:2px">${cg.productos.length} producto${cg.productos.length!==1?'s':''}: ${prodResumen}</div>
+          ${montoEstimado>0?`<div style="font-size:12px;color:var(--verde-dark);font-weight:700;margin-top:2px">≈ $${montoEstimado.toLocaleString('es-AR')} estimado</div>`:''}
         </div>
         <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
           <span style="font-size:11px;font-weight:700;color:${colorProb};background:${colorProb}20;padding:2px 8px;border-radius:20px">${cg.maxProb==='Alta'?'🔴':'🟡'} ${cg.maxProb}</span>
@@ -3417,22 +3477,25 @@ window.renderResultados=()=>{
 
 // =================== CAJA DIARIA ===================
 window.setCajaFecha=()=>{
-  const f=document.getElementById('caja-fecha');
-  if(f) f.value=new Date().toISOString().slice(0,10);
+  const hoy=new Date().toISOString().slice(0,10);
+  const d=document.getElementById('caja-desde'); if(d) d.value=hoy;
+  const h=document.getElementById('caja-hasta'); if(h) h.value=hoy;
 };
 
 window.renderCaja=()=>{
   const el=document.getElementById('caja-contenido'); if(!el) return;
-  const fechaStr=document.getElementById('caja-fecha')?.value;
-  if(!fechaStr){el.innerHTML='<div class="empty">Elegí un día</div>';return;}
-  const desde=new Date(fechaStr+'T00:00:00');
-  const hasta=new Date(fechaStr+'T23:59:59');
+  const desdeStr=document.getElementById('caja-desde')?.value;
+  const hastaStr=document.getElementById('caja-hasta')?.value;
+  if(!desdeStr||!hastaStr){el.innerHTML='<div class="empty">Elegí un rango de fechas</div>';return;}
+  const desde=new Date(desdeStr+'T00:00:00');
+  const hasta=new Date(hastaStr+'T23:59:59');
+  const tituloPeriodo=desdeStr===hastaStr?`del ${desdeStr}`:`del ${desdeStr} al ${hastaStr}`;
 
-  // Ventas del día (no anuladas, sin contar saldos iniciales)
+  // Ventas del período (no anuladas, sin contar saldos iniciales)
   const ventasHoy=ventas.filter(v=>!v.anulada&&v.tipo!=='saldo_inicial'&&v.fecha?.toDate&&v.fecha.toDate()>=desde&&v.fecha.toDate()<=hasta);
   const ventasContadoHoy=ventasHoy.filter(v=>v.forma_pago==='contado');
 
-  // Cobros de Cta. Corriente del día (dinero de ventas viejas)
+  // Cobros de Cta. Corriente del período (dinero de ventas viejas)
   const pagosHoy=pagosCC.filter(p=>p.fecha?.toDate&&p.fecha.toDate()>=desde&&p.fecha.toDate()<=hasta);
 
   // Agrupar por medio de pago: ventas contado (medio_pago) + cobros CC (forma, 'Dinero'→Efectivo)
@@ -3449,7 +3512,7 @@ window.renderCaja=()=>{
   });
   const totalCobradoHoy=Object.values(porMedio).reduce((s,v)=>s+v,0);
 
-  // Ganancia: solo sobre lo VENDIDO hoy (no sobre cobros de CC de ventas viejas)
+  // Ganancia: solo sobre lo VENDIDO en el período (no sobre cobros de CC de ventas viejas)
   const totalVendidoHoy=ventasHoy.reduce((s,v)=>s+(v.total||0),0);
   let cmvHoy=0;
   ventasHoy.forEach(v=>{
@@ -3459,7 +3522,7 @@ window.renderCaja=()=>{
       cmvHoy+=costo*(item.qty||1);
     });
   });
-  // 5% flete: sobre todo lo vendido hoy (Público, Zona y Sunchales)
+  // 5% flete: sobre todo lo vendido en el período (Público, Zona y Sunchales)
   const baseFlete=totalVendidoHoy;
   const flete=baseFlete*0.05;
   const gananciaNetaHoy=totalVendidoHoy-cmvHoy-flete;
@@ -3475,25 +3538,25 @@ window.renderCaja=()=>{
 
   el.innerHTML=`
     <div class="card" style="margin-bottom:10px">
-      <div style="font-size:14px;font-weight:700;margin-bottom:12px">💰 Caja del ${fechaStr}</div>
+      <div style="font-size:14px;font-weight:700;margin-bottom:12px">💰 Caja ${tituloPeriodo}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
         ${cardMedio('Efectivo','💵',porMedio.Efectivo)}
         ${cardMedio('Transferencia','🏦',porMedio.Transferencia)}
         ${cardMedio('Tarjeta','💳',porMedio.Tarjeta)}
-        ${porMedio.Cheque>0?cardMedio('Cheque','📝',porMedio.Cheque):`<div style="background:var(--verde);border-radius:8px;padding:10px;color:#fff"><div style="font-size:11px;opacity:.9;margin-bottom:4px">TOTAL COBRADO HOY</div><div style="font-size:17px;font-weight:700">$${totalCobradoHoy.toLocaleString('es-AR')}</div></div>`}
+        ${porMedio.Cheque>0?cardMedio('Cheque','📝',porMedio.Cheque):`<div style="background:var(--verde);border-radius:8px;padding:10px;color:#fff"><div style="font-size:11px;opacity:.9;margin-bottom:4px">TOTAL COBRADO</div><div style="font-size:17px;font-weight:700">$${totalCobradoHoy.toLocaleString('es-AR')}</div></div>`}
       </div>
-      ${porMedio.Cheque>0?`<div style="background:var(--verde);border-radius:8px;padding:10px;color:#fff;margin-bottom:10px"><div style="font-size:11px;opacity:.9;margin-bottom:4px">TOTAL COBRADO HOY</div><div style="font-size:17px;font-weight:700">$${totalCobradoHoy.toLocaleString('es-AR')}</div></div>`:''}
-      <div style="font-size:11px;color:var(--gris);margin-bottom:10px">Incluye ventas contado + cobros de Cta. Corriente de hoy</div>
+      ${porMedio.Cheque>0?`<div style="background:var(--verde);border-radius:8px;padding:10px;color:#fff;margin-bottom:10px"><div style="font-size:11px;opacity:.9;margin-bottom:4px">TOTAL COBRADO</div><div style="font-size:17px;font-weight:700">$${totalCobradoHoy.toLocaleString('es-AR')}</div></div>`:''}
+      <div style="font-size:11px;color:var(--gris);margin-bottom:10px">Incluye ventas contado + cobros de Cta. Corriente del período</div>
 
       <div style="background:#f0f4f8;border-radius:8px;padding:10px">
-        <div style="font-size:12px;font-weight:700;color:var(--gris);margin-bottom:6px;text-transform:uppercase">De lo vendido hoy (sin contar cobros de Cta. Cte.)</div>
+        <div style="font-size:12px;font-weight:700;color:var(--gris);margin-bottom:6px;text-transform:uppercase">De lo vendido en el período (sin contar cobros de Cta. Cte.)</div>
         <table style="width:100%;border-collapse:collapse">
-          ${fila('Total vendido hoy',totalVendidoHoy)}
+          ${fila('Total vendido',totalVendidoHoy)}
           ${fila('Costo de mercadería vendida',cmvHoy,'#dc2626')}
-          ${fila('5% flete (sobre todo lo vendido hoy)',flete,'#dc2626')}
+          ${fila('5% flete (sobre todo lo vendido)',flete,'#dc2626')}
         </table>
         <div style="border-top:1px solid #dde3ea;margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;align-items:center">
-          <span style="font-size:13px;font-weight:700">Ganancia neta de hoy</span>
+          <span style="font-size:13px;font-weight:700">Ganancia neta del período</span>
           <span style="font-size:19px;font-weight:800;color:${gananciaNetaHoy>=0?'var(--verde)':'#dc2626'}">$${Math.abs(gananciaNetaHoy).toLocaleString('es-AR')}</span>
         </div>
       </div>
