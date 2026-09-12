@@ -1462,7 +1462,12 @@ window.limpiarVenta=()=>{
   if(fi) fi.value=new Date().toISOString().slice(0,10);
 };
 window.finalizarVenta=async()=>{
+  if(window._guardandoVenta) return;
   if(carrito.length===0){alert('Agregá al menos un producto');return;}
+  window._guardandoVenta=true;
+  const btnGenerar=document.querySelector('#sec-venta button[onclick="finalizarVenta()"]');
+  if(btnGenerar){btnGenerar.disabled=true;btnGenerar.style.opacity='0.6';}
+  try{
   const cliente=document.getElementById('venta-cliente').value||'Cliente';
   const total=calcularTotalCarrito();
   const ajusteInfo=contadoAjuste.pct>0?{tipo:contadoAjuste.tipo,pct:contadoAjuste.pct}:null;
@@ -1484,6 +1489,10 @@ window.finalizarVenta=async()=>{
   const ref=await addDoc(collection(db,'ventas'),data);
   if(cliente&&!clientes.find(c=>c.nombre===cliente)) await addDoc(collection(db,'clientes'),{nombre:cliente});
   mostrarRemito({...data,id:ref.id}); limpiarVenta();
+  } finally {
+    window._guardandoVenta=false;
+    if(btnGenerar){btnGenerar.disabled=false;btnGenerar.style.opacity='1';}
+  }
 };
 
 // REMITO
@@ -2124,16 +2133,25 @@ window.abrirModalPago=clientaNombre=>{
 };
 window.abrirPagoDesdeDetalle=()=>{cerrarModal('modal-cc-detalle');abrirModalPago(ccClientaActual);};
 window.guardarPago=async()=>{
+  if(window._guardandoPago) return;
   const cliente=document.getElementById('pago-cliente').value.trim();
   const monto=parseFloat(document.getElementById('pago-monto').value)||0;
   const forma=document.getElementById('pago-forma').value;
   const obs=document.getElementById('pago-obs').value.trim();
   if(!cliente){alert('Escribí el nombre de la clienta');return;}
   if(monto<=0){alert('El monto debe ser mayor a 0');return;}
-  const fechaPago=document.getElementById('pago-fecha').value;
-  const fechaTimestamp=fechaPago?Timestamp.fromDate(new Date(fechaPago+'T12:00:00')):Timestamp.now();
-  await addDoc(collection(db,'pagos'),{cliente,monto,forma,obs,fecha:fechaTimestamp});
-  cerrarModal('modal-pago'); cargarCC();
+  window._guardandoPago=true;
+  const btnPago=document.querySelector('#modal-pago button[onclick="guardarPago()"]');
+  if(btnPago){btnPago.disabled=true;btnPago.style.opacity='0.6';}
+  try{
+    const fechaPago=document.getElementById('pago-fecha').value;
+    const fechaTimestamp=fechaPago?Timestamp.fromDate(new Date(fechaPago+'T12:00:00')):Timestamp.now();
+    await addDoc(collection(db,'pagos'),{cliente,monto,forma,obs,fecha:fechaTimestamp});
+    cerrarModal('modal-pago'); cargarCC();
+  } finally {
+    window._guardandoPago=false;
+    if(btnPago){btnPago.disabled=false;btnPago.style.opacity='1';}
+  }
 };
 window.anularPago=async id=>{
   if(!confirm('¿Anular este cobro?')) return;
