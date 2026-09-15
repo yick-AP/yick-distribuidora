@@ -3584,6 +3584,22 @@ window.renderCaja=()=>{
         </div>
         ${totalPagosCCHoy>0?`<div style="font-size:11px;color:var(--gris);margin-top:8px">ℹ️ De esta plata, $${money(totalPagosCCHoy)} son cobros de Cta. Corriente — su costo se estimó al 70% porque no sabemos qué productos puntuales pagó cada clienta.</div>`:''}
       </div>
+    </div>
+    <div class="card">
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px">📋 Detalle de lo cobrado (para verificar)</div>
+      ${ventasContadoHoy.length===0&&pagosHoy.length===0?'<div style="font-size:12px;color:var(--gris)">Sin movimientos en este período</div>':''}
+      ${ventasContadoHoy.length>0?`<div style="font-size:11px;font-weight:700;color:var(--gris);text-transform:uppercase;margin:6px 0 4px">Ventas contado</div>
+        ${ventasContadoHoy.map(v=>`
+        <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0f4f8;font-size:12px">
+          <span>${v.cliente||'Cliente'} <span style="color:var(--gris)">· ${v.medio_pago||'Efectivo'} · #${v.nro||'-'}</span></span>
+          <strong>$${money(v.total||0)}</strong>
+        </div>`).join('')}`:''}
+      ${pagosHoy.length>0?`<div style="font-size:11px;font-weight:700;color:var(--gris);text-transform:uppercase;margin:10px 0 4px">Cobros de Cta. Corriente</div>
+        ${pagosHoy.map(p=>`
+        <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0f4f8;font-size:12px">
+          <span>${p.cliente||'Sin nombre'} <span style="color:var(--gris)">· ${p.forma||'Dinero'}</span></span>
+          <strong>$${money(p.monto||0)}</strong>
+        </div>`).join('')}`:''}
     </div>`;
 };
 
