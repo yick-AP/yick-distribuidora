@@ -23,11 +23,11 @@ body{font-family:system-ui,-apple-system,sans-serif;background:var(--fondo);colo
 
 /* NAV */
 .bottomnav{background:#fff;border-top:1px solid var(--borde);display:flex;position:sticky;bottom:0;z-index:100;overflow-x:auto}
-.nav-btn{flex:1;min-width:52px;padding:7px 4px 6px;display:flex;flex-direction:column;align-items:center;gap:2px;border:none;background:none;cursor:pointer;color:#a0aec0;font-size:9px;transition:color .15s;white-space:nowrap;font-weight:500}
+.nav-btn{flex:1;min-width:66px;padding:8px 4px 7px;display:flex;flex-direction:column;align-items:center;gap:3px;border:none;background:none;cursor:pointer;color:#4a5568;font-size:12px;transition:color .15s;white-space:nowrap;font-weight:800}
 .nav-btn.active{color:var(--verde)}
 .nav-btn.active .nav-icon-wrap{background:var(--verde-light);border-radius:8px}
 .nav-icon-wrap{padding:2px 8px;border-radius:8px;transition:background .15s}
-.nav-btn svg{width:18px;height:18px}
+.nav-btn svg{width:23px;height:23px;stroke-width:2.2}
 .main{flex:1;padding:14px;overflow-y:auto}
 .section{display:none}.section.active{display:block}
 
@@ -226,6 +226,7 @@ input[readonly]{background:#f7fafc;color:var(--gris)}
       </div>
       <div style="display:flex;gap:8px;margin-bottom:8px">
         <button class="btn btn-sm" id="btn-modo-seleccion" onclick="toggleSeleccionMultiple()">☑️ Selección múltiple</button>
+        <button class="btn btn-sm" onclick="abrirAumentoMasivo()" style="background:#fef3c7;color:#92400e">📈 Aumento masivo por marca</button>
       </div>
       <div class="tabs">
         <button class="tab active" onclick="filterTab(this,'todos')">Todos</button>
@@ -786,6 +787,28 @@ input[readonly]{background:#f7fafc;color:var(--gris)}
     <div style="display:flex;gap:8px;margin-top:14px">
       <button class="btn" style="flex:1" onclick="cerrarModal('modal-producto')">Cancelar</button>
       <button class="btn btn-primary" style="flex:2" onclick="guardarProducto()">✓ Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL AUMENTO MASIVO -->
+<div class="modal-overlay" id="modal-aumento">
+  <div class="modal">
+    <div class="modal-header"><span>📈 Aumento masivo por marca</span><button class="modal-close" onclick="cerrarModal('modal-aumento')">×</button></div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div class="form-group"><label>Marca *</label><select id="aum-marca" onchange="previewAumento()"></select></div>
+      <div class="form-group"><label>Porcentaje de aumento (%) *</label><input type="number" id="aum-pct" placeholder="Ej: 10" step="0.01" oninput="previewAumento()"></div>
+      <div class="form-group"><label>¿Qué aumentó?</label>
+        <select id="aum-modo" onchange="previewAumento()">
+          <option value="costo">El costo (recalcula los precios con los % de ganancia de cada producto)</option>
+          <option value="precio">Solo los precios de venta (el costo queda igual)</option>
+        </select>
+      </div>
+      <div id="aum-preview" style="max-height:260px;overflow:auto"></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn" style="flex:1" onclick="cerrarModal('modal-aumento')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-aplicar-aumento" style="flex:2" onclick="aplicarAumento()" disabled>✅ Aplicar aumento</button>
     </div>
   </div>
 </div>
@@ -2725,6 +2748,100 @@ function listaPrecioLabel(v){
   const lp=v.lista_precio||v.lista;
   return listaLabel(lp)+(v.forma_pago==='cc'?' · Cta. Corriente':v.forma_pago==='contado'?' · Contado':'');
 }
+// =================== AUMENTO MASIVO POR MARCA ===================
+function normMarca(m){return (m||'Sin marca').toString().trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
+function redondear2(n){return Math.round((n||0)*100)/100;}
+window.abrirAumentoMasivo=()=>{
+  const grupos={};
+  productos.forEach(p=>{
+    const k=normMarca(p.marca);
+    if(!grupos[k]) grupos[k]={nombre:(p.marca||'Sin marca').trim()||'Sin marca',cant:0};
+    grupos[k].cant++;
+  });
+  const sel=document.getElementById('aum-marca');
+  sel.innerHTML='<option value="">Elegí una marca...</option>'+Object.entries(grupos)
+    .sort((a,b)=>a[1].nombre.localeCompare(b[1].nombre))
+    .map(([k,g])=>`<option value="${k}">${g.nombre} (${g.cant} productos)</option>`).join('');
+  document.getElementById('aum-pct').value='';
+  document.getElementById('aum-modo').value='costo';
+  document.getElementById('aum-preview').innerHTML='<div class="empty">Elegí la marca y el porcentaje para ver cómo quedan los precios</div>';
+  document.getElementById('btn-aplicar-aumento').disabled=true;
+  document.getElementById('modal-aumento').classList.add('open');
+};
+// Calcula los cambios de cada producto sin guardar nada
+function calcularAumento(){
+  const marca=document.getElementById('aum-marca')?.value;
+  const pct=parseFloat(document.getElementById('aum-pct')?.value);
+  const modo=document.getElementById('aum-modo')?.value||'costo';
+  if(!marca||!(pct>0)) return null;
+  const f=1+pct/100;
+  const cambios=[];
+  productos.filter(p=>normMarca(p.marca)===marca).forEach(p=>{
+    const upd={};
+    if(modo==='costo'){
+      if(!((p.costo||0)>0)) return; // sin costo cargado no hay nada que aumentar
+      const costoNuevo=redondear2(p.costo*f);
+      upd.costo=costoNuevo;
+      [['pct_publico','precio_publico'],['pct_prof_contado','precio_prof_contado'],['pct_prof_cc','precio_prof_cc']].forEach(([pc,pr])=>{
+        if((p[pc]||0)>0) upd[pr]=redondear2(costoNuevo*(1+p[pc]/100));
+      });
+    } else {
+      ['precio_publico','precio_prof_contado','precio_prof_cc'].forEach(pr=>{
+        if((p[pr]||0)>0) upd[pr]=redondear2(p[pr]*f);
+      });
+      // mantener el % de ganancia coherente con el nuevo precio, para que al editar el producto no se pierda el aumento
+      if((p.costo||0)>0){
+        [['pct_publico','precio_publico'],['pct_prof_contado','precio_prof_contado'],['pct_prof_cc','precio_prof_cc']].forEach(([pc,pr])=>{
+          if(upd[pr]!==undefined) upd[pc]=redondear2((upd[pr]/p.costo-1)*100);
+        });
+      }
+    }
+    if(Object.keys(upd).length) cambios.push({p,upd});
+  });
+  return {cambios,pct,modo,marca};
+}
+window.previewAumento=()=>{
+  const el=document.getElementById('aum-preview');
+  const btn=document.getElementById('btn-aplicar-aumento');
+  const r=calcularAumento();
+  if(!r){el.innerHTML='<div class="empty">Elegí la marca y el porcentaje para ver cómo quedan los precios</div>';btn.disabled=true;return;}
+  const total=productos.filter(p=>normMarca(p.marca)===r.marca).length;
+  const sinCambio=total-r.cambios.length;
+  if(r.cambios.length===0){
+    el.innerHTML='<div class="empty">Ningún producto de esta marca tiene costo/precio cargado para aumentar</div>';btn.disabled=true;return;
+  }
+  const m=n=>'$'+money(n);
+  el.innerHTML=`<div style="background:var(--verde-light);border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;font-weight:600;color:var(--verde-dark)">
+      Se van a modificar ${r.cambios.length} producto${r.cambios.length!==1?'s':''} (+${r.pct}%)${sinCambio>0?` · ${sinCambio} sin costo/precio cargado quedan igual`:''}
+    </div>`+r.cambios.slice(0,60).map(({p,upd})=>`
+      <div style="padding:6px 0;border-bottom:1px solid #f0f4f8;font-size:12px">
+        <div style="font-weight:600">${p.nombre}</div>
+        <div style="color:var(--gris)">${upd.costo!==undefined?`Costo ${m(p.costo)} → <strong>${m(upd.costo)}</strong> · `:''}${upd.precio_publico!==undefined?`Público ${m(p.precio_publico||0)} → <strong>${m(upd.precio_publico)}</strong>`:''}</div>
+      </div>`).join('')+(r.cambios.length>60?`<div style="font-size:11px;color:var(--gris);padding:6px 0">...y ${r.cambios.length-60} más</div>`:'');
+  btn.disabled=false;
+};
+window.aplicarAumento=async()=>{
+  if(window._aplicandoAumento) return;
+  const r=calcularAumento();
+  if(!r||r.cambios.length===0) return;
+  if(!confirm(`¿Aplicar +${r.pct}% a ${r.cambios.length} productos? Esto modifica los precios guardados.`)) return;
+  window._aplicandoAumento=true;
+  const btn=document.getElementById('btn-aplicar-aumento');
+  btn.disabled=true; btn.textContent='Aplicando...';
+  try{
+    for(const {p,upd} of r.cambios){
+      await updateDoc(doc(db,'productos',p.id),upd);
+    }
+    cerrarModal('modal-aumento');
+    alert(`✅ Aumento aplicado a ${r.cambios.length} productos`);
+  }catch(e){
+    alert('Hubo un error y el aumento puede haber quedado a medias. Revisá los precios de la marca y, si hace falta, volvé a intentarlo: '+e.message);
+  }finally{
+    window._aplicandoAumento=false;
+    btn.textContent='✅ Aplicar aumento';
+  }
+};
+
 window.cerrarModal=id=>document.getElementById(id)?.classList.remove('open');
 
 // EDITAR REMITO DESDE LA VISTA DEL REMITO
