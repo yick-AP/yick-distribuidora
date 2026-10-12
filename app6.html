@@ -490,6 +490,11 @@ input[readonly]{background:#f7fafc;color:var(--gris)}
             <button class="btn btn-sm" onclick="setZonaHoy()" style="margin-top:14px">Hoy</button>
             <button class="btn btn-sm" onclick="setZonaMes()" style="margin-top:14px">Este mes</button>
           </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--borde)">
+            <select id="zona-export-sel" style="flex:1;min-width:150px" onfocus="llenarZonasExport()"><option value="">Elegí la zona a exportar…</option></select>
+            <button class="btn btn-sm btn-info" onclick="exportarZonaExcel('productos')">📊 Excel: productos y total</button>
+            <button class="btn btn-sm btn-info" onclick="exportarZonaExcel('ventas')">📊 Excel: lista de ventas</button>
+          </div>
         </div>
         <div id="ci-zonas-lista"><div class="empty">Elegí un período para ver las ventas por zona</div></div>
       </div>
@@ -3320,6 +3325,63 @@ window.setZonaHoy=()=>{
   document.getElementById('zona-hasta').value=hoy;
   renderVentasZona();
 };
+
+window.llenarZonasExport=()=>{
+  const sel=document.getElementById('zona-export-sel'); if(!sel) return;
+  const actual=sel.value;
+  const zs=[...new Set(clientes.map(c=>(c.localidad||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+  sel.innerHTML='<option value="">Elegí la zona a exportar…</option>'+zs.map(z=>`<option value="${z.replace(/"/g,'&quot;')}">${z}</option>`).join('');
+  sel.value=actual;
+};
+window.exportarZonaExcel=(modo)=>{
+  const zona=document.getElementById('zona-export-sel')?.value;
+  const desdeStr=document.getElementById('zona-desde')?.value;
+  const hastaStr=document.getElementById('zona-hasta')?.value;
+  if(!zona){alert('Elegí primero la zona a exportar.');return;}
+  if(!desdeStr||!hastaStr){alert('Elegí las fechas Desde y Hasta.');return;}
+  const desde=new Date(desdeStr+'T00:00:00'), hasta=new Date(hastaStr+'T23:59:59');
+  const norm=t=>(t||'').toString().trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const vs=ventas.filter(v=>{
+    if(v.anulada||v.tipo==='saldo_inicial'||!v.fecha?.toDate) return false;
+    const f=v.fecha.toDate(); if(f<desde||f>hasta) return false;
+    const cli=clientes.find(c=>c.nombre===v.cliente);
+    return cli && norm(cli.localidad)===norm(zona);
+  }).sort((a,b)=>a.fecha.toDate()-b.fecha.toDate());
+  if(vs.length===0){alert('No hay ventas de '+zona+' en ese período.');return;}
+  const num=n=>String(Math.round((n||0)*100)/100).replace('.',',');
+  const q=t=>'"'+String(t??'').replace(/"/g,'""')+'"';
+  let filas=[], total=0, nombre='';
+  if(modo==='ventas'){
+    filas.push(['Fecha','Remito','Cliente','Forma de pago','Total'].map(q).join(';'));
+    vs.forEach(v=>{
+      total+=(v.total||0);
+      filas.push([q(v.fecha.toDate().toLocaleDateString('es-AR')),q(v.nro||''),q(v.cliente),q(v.forma_pago==='cc'?'Cuenta corriente':'Contado'),num(v.total)].join(';'));
+    });
+    filas.push(['','','','TOTAL FACTURADO',num(total)].join(';'));
+    nombre='ventas';
+  } else {
+    const prods={};
+    vs.forEach(v=>(v.items||[]).forEach(it=>{
+      const k=it.nombre||it.id;
+      if(!prods[k]) prods[k]={nombre:k,qty:0,monto:0};
+      prods[k].qty+=(it.qty||0); prods[k].monto+=(it.qty||0)*(it.precio||0);
+    }));
+    filas.push(['Producto','Cantidad','Precio unitario (promedio)','Total'].map(q).join(';'));
+    Object.values(prods).sort((a,b)=>a.nombre.localeCompare(b.nombre,'es')).forEach(p=>{
+      total+=p.monto;
+      filas.push([q(p.nombre),p.qty,num(p.qty?p.monto/p.qty:0),num(p.monto)].join(';'));
+    });
+    filas.push(['','','TOTAL PRODUCTOS',num(total)].join(';'));
+    filas.push(['','','TOTAL FACTURADO (ventas)',num(vs.reduce((s,v)=>s+(v.total||0),0))].join(';'));
+    nombre='productos';
+  }
+  const blob=new Blob(['\uFEFF'+filas.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`${zona.replace(/[^\w]+/g,'_')}-${nombre}-${desdeStr}-a-${hastaStr}.csv`;
+  a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+};
+
 window.setZonaMes=()=>{
   const hoy=new Date();
   document.getElementById('zona-desde').value=new Date(hoy.getFullYear(),hoy.getMonth(),1).toISOString().slice(0,10);
