@@ -1576,6 +1576,7 @@ function generarHTMLRemito(v){
       <div>
         <div style="font-size:9px;color:#718096;text-transform:uppercase;font-weight:600">Cliente</div>
         <div style="font-size:14px;font-weight:700">${v.cliente||''}</div>
+        ${(()=>{const l=clientes.find(c=>c.nombre===v.cliente)?.localidad;return l?`<div style="font-size:11px;color:#4a5568;font-weight:600">📍 ${l}</div>`:'';})()}
       </div>
       <div style="text-align:right">
         <div style="font-size:9px;color:#718096;text-transform:uppercase;font-weight:600">Lista</div>
@@ -1654,7 +1655,7 @@ window.compartirWhatsApp=()=>{
   if(!remitoActual) return;
   const items=(remitoActual.items||[]).map(i=>`• ${i.nombre} x${i.qty} = $${((i.precio||0)*i.qty).toLocaleString('es-AR')}`).join('\n');
   const ajuste=remitoActual.ajuste?.pct>0?(remitoActual.ajuste.tipo==='descuento'?`\n✅ Descuento ${remitoActual.ajuste.pct}%`:`\n⚠️ Recargo ${remitoActual.ajuste.pct}%`):'';
-  const texto=`📦 *Yick Distribuidora*\nRemito ${document.getElementById('r-num').textContent} · ${document.getElementById('r-fecha').textContent}\n👤 *${remitoActual.cliente}*\n📋 ${listaLabel(remitoActual.lista)}\n\n${items}${ajuste}\n\n💰 *Total: $${(remitoActual.total||0).toLocaleString('es-AR')}*\n\n_Gracias por su compra 💚_`;
+  const texto=`📦 *Yick Distribuidora*\nRemito ${document.getElementById('r-num').textContent} · ${document.getElementById('r-fecha').textContent}\n👤 *${remitoActual.cliente}*${(()=>{const l=clientes.find(c=>c.nombre===remitoActual.cliente)?.localidad;return l?'\n📍 '+l:'';})()}\n📋 ${listaLabel(remitoActual.lista)}\n\n${items}${ajuste}\n\n💰 *Total: $${(remitoActual.total||0).toLocaleString('es-AR')}*\n\n_Gracias por su compra 💚_`;
   window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank');
 };
 
