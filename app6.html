@@ -846,6 +846,7 @@ input[readonly]{background:#f7fafc;color:var(--gris)}
       <div><div style="font-size:12px;color:var(--gris)">Saldo pendiente</div><div style="font-size:22px;font-weight:700;color:#dc2626" id="cc-detalle-saldo">$0</div></div>
       <button class="btn btn-primary btn-sm" onclick="abrirPagoDesdeDetalle()">💰 Cargar cobro</button>
     </div>
+    <div style="margin-bottom:10px;text-align:right"><button class="btn btn-sm btn-danger" id="btn-eliminar-cc" onclick="eliminarClientaCC()">🗑 Eliminar esta clienta (cargada por error)</button></div>
     <div style="background:#f0f4f8;border-radius:8px;padding:10px;margin-bottom:10px">
       <div style="font-size:12px;font-weight:600;color:var(--gris);margin-bottom:6px">📅 Filtrar por período</div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -2012,6 +2013,30 @@ window.verDetalleCC=async nombre=>{
   ].sort((a,b)=>(a.fecha?.toDate?a.fecha.toDate():new Date(0))-(b.fecha?.toDate?b.fecha.toDate():new Date(0)));
   renderMovimientosCC();
   document.getElementById('modal-cc-detalle').classList.add('open');
+};
+
+window.eliminarClientaCC=async()=>{
+  const nombre=ccClientaActual; if(!nombre) return;
+  if(window._eliminandoCC) return;
+  const remitos=ventas.filter(v=>v.cliente===nombre&&!v.anulada&&v.tipo!=='saldo_inicial');
+  if(remitos.length>0){
+    alert(`No se puede eliminar: ${nombre} tiene ${remitos.length} remito(s) activo(s).\n\nPrimero anulá esos remitos (así el stock vuelve) y después eliminala.`);
+    return;
+  }
+  const iniciales=ventas.filter(v=>v.cliente===nombre&&v.tipo==='saldo_inicial');
+  const pagos=pagosCC.filter(p=>p.cliente===nombre);
+  const fichas=clientes.filter(c=>c.nombre===nombre);
+  if(!confirm(`¿Eliminar a ${nombre}?\n\nSe borran: ${fichas.length} ficha(s) de cliente, ${iniciales.length} saldo(s) inicial(es) y ${pagos.length} cobro(s) de su cuenta corriente.\n\nEsta acción no se puede deshacer.`)) return;
+  window._eliminandoCC=true;
+  try{
+    for(const v of iniciales) await deleteDoc(doc(db,'ventas',v.id));
+    for(const p of pagos) await deleteDoc(doc(db,'pagos',p.id));
+    for(const c of fichas) await deleteDoc(doc(db,'clientes',c.id));
+    cerrarModal('modal-cc-detalle');
+    alert('✅ Clienta eliminada.');
+  }catch(e){
+    alert('Error al eliminar: '+e.message+'\nRevisá y volvé a intentar.');
+  }finally{window._eliminandoCC=false;}
 };
 window.filtrarMovimientosCC=()=>renderMovimientosCC();
 window.limpiarFiltroCC=()=>{document.getElementById('cc-fecha-desde').value='';document.getElementById('cc-fecha-hasta').value='';renderMovimientosCC();};
