@@ -2520,8 +2520,13 @@ window.armarListaCompra=()=>{
     td{padding:9px 10px;border-bottom:1px solid #f0f4f8}
     td:not(:first-child){text-align:right}
     .total-row{background:#E1F5EE;font-weight:700}
+    @media print{.noprint{display:none!important}}
     .footer{margin-top:20px;font-size:11px;color:#a0aec0;text-align:center}
   </style></head><body>
+  <div class="noprint" style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:13px;color:#92400e">
+    <button onclick="window.print()" style="padding:8px 14px;border:0;border-radius:6px;background:#1D9E75;color:#fff;font-weight:700;cursor:pointer">🖨 Imprimir / Guardar PDF</button>
+    <span style="margin-left:8px"><strong>Para compartirla por WhatsApp:</strong> en "Destino" elegí <strong>Guardar como PDF</strong> y después adjuntá ese PDF en WhatsApp.</span>
+  </div>
   <h2>📦 Yick Distribuidora · Lista de Compra</h2>
   <p>Proveedor/Marca: <strong>${marca}</strong> · Fecha: <strong>${new Date().toLocaleDateString('es-AR')}</strong></p>
   <table>
@@ -2542,26 +2547,42 @@ window.armarListaCompra=()=>{
     </tbody>
   </table>
   <div class="footer">Yick Distribuidora · Sunchales, Santa Fe · ${new Date().toLocaleDateString('es-AR')}</div>
-  <script>window.print()<\/script>
+  <script>setTimeout(()=>window.print(),400)<\/script>
   </body></html>`);
   w.document.close();
 };
 
 window.exportarListaCSV=()=>{
   const lista=getListaParaExportar();
-  if(lista.length===0){alert('No hay productos con cantidad > 0');return;}
-  const encabezado='Producto\tMarca\tProveedor\tStock actual\tStock mínimo\tCantidad pedido\tCosto unitario\tTotal';
-  const filas=lista.map(p=>[
-    p.nombre, p.marca||'', p.proveedor||'',
-    p.stock_actual||0, p.stock_minimo||0, p.pedido,
-    p.costo||0, (p.costo||0)*p.pedido
-  ].join('\t')).join('\n');
-  const csv=encabezado+'\n'+filas;
-  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
-  const url=URL.createObjectURL(blob);
+  if(lista.length===0){alert('No hay productos con cantidad de pedido > 0. Cargá las cantidades en la columna Pedido.');return;}
+  const marca=document.getElementById('filtro-marca-compra')?.value||'Varios';
+  const esc=t=>String(t??'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const n=v=>String(Math.round((v||0)*100)/100).replace('.',',');
+  const total=lista.reduce((a,p)=>a+(p.costo||0)*p.pedido,0);
+  const th='style="background:#1D9E75;color:#ffffff;font-weight:bold;border:1px solid #0F6E56;padding:4px"';
+  const td='style="border:1px solid #cbd5e0;padding:3px"';
+  const filas=lista.map(p=>`<tr>
+    <td ${td}>${esc(p.nombre)}</td><td ${td}>${esc(p.marca||'')}</td>
+    <td ${td} align="center">${p.stock_actual||0}</td>
+    <td ${td} align="center"><b>${p.pedido}</b></td>
+    <td ${td} align="right" x:num>${n(p.costo)}</td>
+    <td ${td} align="right" x:num><b>${n((p.costo||0)*p.pedido)}</b></td></tr>`).join('');
+  const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8">
+  <!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Lista de compra</x:Name></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+  </head><body>
+  <table style="border-collapse:collapse;font-family:Arial;font-size:11pt">
+    <tr><td colspan="6" style="font-size:15pt;font-weight:bold;color:#1D9E75">Yick Distribuidora · Lista de compra</td></tr>
+    <tr><td colspan="6">Proveedor/Marca: <b>${esc(marca)}</b> · Fecha: <b>${new Date().toLocaleDateString('es-AR')}</b></td></tr>
+    <tr><td colspan="6"></td></tr>
+    <tr><th ${th} width="380">Producto</th><th ${th} width="110">Marca</th><th ${th} width="80">Stock actual</th><th ${th} width="90">Cantidad pedido</th><th ${th} width="100">Costo unit.</th><th ${th} width="110">Total</th></tr>
+    ${filas}
+    <tr><td colspan="5" style="background:#E1F5EE;font-weight:bold;border:1px solid #cbd5e0;padding:4px">TOTAL ESTIMADO</td><td align="right" style="background:#E1F5EE;font-weight:bold;border:1px solid #cbd5e0;padding:4px">${n(total)}</td></tr>
+  </table></body></html>`;
+  const blob=new Blob(['\uFEFF'+html],{type:'application/vnd.ms-excel;charset=utf-8;'});
   const a=document.createElement('a');
-  a.href=url; a.download=`lista-compra-${new Date().toISOString().slice(0,10)}.csv`;
-  a.click(); URL.revokeObjectURL(url);
+  a.href=URL.createObjectURL(blob);
+  a.download=`lista-compra-${marca.replace(/[^\w]+/g,'_')}-${new Date().toISOString().slice(0,10)}.xls`;
+  a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 };
 
 window.compartirListaWhatsApp=()=>{
