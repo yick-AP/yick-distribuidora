@@ -2259,6 +2259,7 @@ window.tabCompras=(btn,tab)=>{
 window.cambiarModoPedido=()=>{
   // al cambiar de modo, recalculamos todo de cero según el modo elegido
   window.sugeridosEditados={};
+  try{localStorage.removeItem('yick_pedido');}catch(e){}
   renderComprasSugeridas();
 };
 
@@ -2273,7 +2274,10 @@ window.renderComprasSugeridas=()=>{
   if(lista.length===0){el.innerHTML='<div class="empty">✅ No hay productos para sugerir con este filtro</div>';return;}
 
   // guardar sugeridos editables en objeto global
-  if(!window.sugeridosEditados) window.sugeridosEditados={};
+  if(!window.sugeridosEditados){
+    window.sugeridosEditados={};
+    try{const g=JSON.parse(localStorage.getItem('yick_pedido')||'null');if(g&&typeof g==='object') window.sugeridosEditados=g;}catch(e){}
+  }
   lista.forEach(p=>{
     if(window.sugeridosEditados[p.id]===undefined){
       window.sugeridosEditados[p.id]=modoSugerido?Math.max(0,(p.stock_minimo||5)*2-(p.stock_actual||0)):0;
@@ -2330,6 +2334,7 @@ window.renderComprasSugeridas=()=>{
 window.actualizarSugerido=(id,costo)=>{
   const qty=parseInt(document.getElementById('sug-qty-'+id)?.value)||0;
   window.sugeridosEditados[id]=qty;
+  try{localStorage.setItem('yick_pedido',JSON.stringify(window.sugeridosEditados));}catch(e){}
   const totalEl=document.getElementById('sug-total-'+id);
   if(totalEl) totalEl.textContent='$'+(costo*qty).toLocaleString('es-AR');
   // recalcular total general
