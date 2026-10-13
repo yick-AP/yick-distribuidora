@@ -2288,6 +2288,7 @@ window.renderComprasSugeridas=()=>{
   el.innerHTML=`
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <button class="btn btn-primary" onclick="armarListaCompra()">📋 Armar lista de compra</button>
+      <button class="btn" style="background:#fef3c7;color:#92400e" onclick="imprimirPlanillaStock()">🖨 Imprimir stock (para contar a mano)</button>
       <button class="btn btn-whatsapp" onclick="compartirListaWhatsApp()">📲 Compartir WhatsApp</button>
       <button class="btn btn-info" onclick="exportarListaCSV()">📊 Exportar Excel/CSV</button>
     </div>
@@ -2464,9 +2465,46 @@ window.exportarVentasPeriodoCSV=()=>{
   a.click(); URL.revokeObjectURL(url);
 };
 
+
+window.imprimirPlanillaStock=()=>{
+  const marca=document.getElementById('filtro-marca-compra')?.value||'';
+  let lista=[...productos];
+  if(marca) lista=lista.filter(p=>(p.marca||'').toLowerCase()===marca.toLowerCase());
+  if(lista.length===0){alert('No hay productos para imprimir.');return;}
+  lista.sort((a,b)=>(a.marca||'').localeCompare(b.marca||'','es')||(a.nombre||'').localeCompare(b.nombre||'','es'));
+  const w=window.open('','_blank');
+  if(!w){alert('El navegador bloqueó la ventana. Permití las ventanas emergentes para este sitio.');return;}
+  const esc=t=>String(t??'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Planilla de stock · ${esc(marca||'Todas las marcas')}</title>
+  <style>
+    body{font-family:system-ui,sans-serif;padding:20px;color:#1a202c}
+    h2{color:#1D9E75;margin:0 0 4px}
+    p{color:#4a5568;font-size:13px;margin:0 0 12px}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th{background:#1D9E75;color:#fff;padding:7px 8px;font-size:11px;text-transform:uppercase;text-align:left}
+    td{padding:8px;border:1px solid #cbd5e0}
+    td.n{text-align:center;width:70px}
+    td.w{width:90px}
+    tr{page-break-inside:avoid}
+    thead{display:table-header-group}
+    .marca td{background:#E1F5EE;font-weight:700;color:#0F6E56}
+  </style></head><body>
+  <h2>📋 Yick Distribuidora · Planilla de stock</h2>
+  <p>Marca: <strong>${esc(marca||'Todas')}</strong> · Fecha: <strong>${new Date().toLocaleDateString('es-AR')}</strong> · ${lista.length} productos (incluye los que tienen stock 0)</p>
+  <table>
+    <thead><tr><th>Producto</th><th style="text-align:center">Stock sistema</th><th style="text-align:center">Stock contado</th><th style="text-align:center">Pedir</th></tr></thead>
+    <tbody>
+    ${(()=>{let ult=null;return lista.map(p=>{const m=p.marca||'Sin marca';let h='';if(!marca&&m!==ult){h=`<tr class="marca"><td colspan="4">${esc(m)}</td></tr>`;ult=m;}return h+`<tr><td>${esc(p.nombre)}</td><td class="n">${p.stock_actual||0}</td><td class="w"></td><td class="w"></td></tr>`;}).join('');})()}
+    </tbody>
+  </table>
+  <script>window.print()<\/script>
+  </body></html>`);
+  w.document.close();
+};
+
 window.armarListaCompra=()=>{
   const lista=getListaParaExportar();
-  if(lista.length===0){alert('No hay productos con cantidad de pedido > 0');return;}
+  if(lista.length===0){imprimirPlanillaStock();return;}
   const marca=document.getElementById('filtro-marca-compra')?.value||'Varios';
   const total=lista.reduce((s,p)=>s+(p.costo||0)*p.pedido,0);
   const w=window.open('','_blank');
