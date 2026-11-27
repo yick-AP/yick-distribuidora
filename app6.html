@@ -3519,18 +3519,21 @@ function calcularComprasClientas(){
     const loc=(cli?.localidad||'').trim();
     if(!loc||!sel.has(_cpcNorm(loc))) return;
     const k=v.cliente;
-    if(!porCli[k]) porCli[k]={cliente:k,localidad:loc,remitos:0,total:0,prods:{}};
+    if(!porCli[k]) porCli[k]={cliente:k,localidad:loc,remitos:0,total:0,costo:0,prods:{}};
     porCli[k].remitos++; porCli[k].total+=(v.total||0);
     (v.items||[]).forEach(it=>{
       const n=it.nombre||it.id||'?';
-      if(!porCli[k].prods[n]) porCli[k].prods[n]={nombre:n,qty:0,monto:0};
-      porCli[k].prods[n].qty+=(it.qty||0); porCli[k].prods[n].monto+=(it.qty||0)*(it.precio||0);
+      if(!porCli[k].prods[n]) porCli[k].prods[n]={nombre:n,qty:0,monto:0,costoU:0,costoT:0};
+      const pr=productos.find(x=>x.id===it.id)||productos.find(x=>x.nombre===it.nombre);
+      const cu=pr?.costo||0, q=(it.qty||0);
+      porCli[k].prods[n].qty+=q; porCli[k].prods[n].monto+=q*(it.precio||0);
+      porCli[k].prods[n].costoU=cu; porCli[k].prods[n].costoT+=q*cu; porCli[k].costo+=q*cu;
     });
   });
   const lista=Object.values(porCli).map(c=>({...c,prods:Object.values(c.prods).sort((x,y)=>x.nombre.localeCompare(y.nombre,'es'))}))
     .sort((x,y)=>x.localidad.localeCompare(y.localidad,'es')||x.cliente.localeCompare(y.cliente,'es'));
   const nombreMes=desde.toLocaleDateString('es-AR',{month:'long',year:'numeric'});
-  return {lista,nombreMes,total:lista.reduce((s,c)=>s+c.total,0)};
+  return {lista,nombreMes,total:lista.reduce((s,c)=>s+c.total,0),costo:lista.reduce((s,c)=>s+c.costo,0)};
 }
 window.renderComprasClientas=()=>{
   const el=document.getElementById('cpc-resultado'); if(!el) return;
@@ -3541,15 +3544,15 @@ window.renderComprasClientas=()=>{
   let locAct=null;
   el.innerHTML=`<div style="background:var(--verde-light);border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;justify-content:space-between">
       <div style="font-size:12px;color:var(--verde-dark);font-weight:600">${d.lista.length} clientas · ${d.nombreMes}</div>
-      <div style="font-size:16px;font-weight:700;color:var(--verde-dark)">${pesos(d.total)}</div></div>`+
+      <div style="text-align:right"><div style="font-size:11px;color:var(--verde-dark)">A invertir (costo): <strong style="font-size:16px">${pesos(d.costo)}</strong></div><div style="font-size:11px;color:var(--gris)">Vendido: ${pesos(d.total)}</div></div></div>`+
   d.lista.map(c=>{
     let h='';
     if(c.localidad!==locAct){locAct=c.localidad;h=`<div style="font-weight:700;font-size:15px;margin:14px 0 6px">📍 ${_cpcEsc(c.localidad)}</div>`;}
     return h+`<div style="background:#fff;border-radius:10px;border:1px solid var(--borde);padding:10px;margin-bottom:8px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:6px"><strong>${_cpcEsc(c.cliente)}</strong><strong style="color:var(--verde-dark)">${pesos(c.total)}</strong></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px"><strong>${_cpcEsc(c.cliente)}</strong><strong style="color:var(--verde-dark)">Costo ${pesos(c.costo)}</strong></div>
       <table style="width:100%;border-collapse:collapse;font-size:12px">
-        <tr style="color:var(--gris)"><th style="text-align:left;padding:2px 0">Producto</th><th style="width:40px">Cant.</th><th style="text-align:right;width:80px">Precio</th><th style="text-align:right;width:90px">Total</th></tr>
-        ${c.prods.map(p=>`<tr style="border-top:1px solid #f0f4f8"><td style="padding:3px 0">${_cpcEsc(p.nombre)}</td><td style="text-align:center">${p.qty}</td><td style="text-align:right">${pesos(p.qty?p.monto/p.qty:0)}</td><td style="text-align:right">${pesos(p.monto)}</td></tr>`).join('')}
+        <tr style="color:var(--gris)"><th style="text-align:left;padding:2px 0">Producto</th><th style="width:40px">Cant.</th><th style="text-align:right;width:85px">Costo unit.</th><th style="text-align:right;width:90px">Costo total</th></tr>
+        ${c.prods.map(p=>`<tr style="border-top:1px solid #f0f4f8"><td style="padding:3px 0">${_cpcEsc(p.nombre)}</td><td style="text-align:center">${p.qty}</td><td style="text-align:right">${p.costoU?pesos(p.costoU):'<span style="color:#dc2626">sin costo</span>'}</td><td style="text-align:right">${pesos(p.costoT)}</td></tr>`).join('')}
       </table></div>`;
   }).join('');
 };
@@ -3561,15 +3564,15 @@ window.exportarComprasClientas=()=>{
   const td='style="border:1px solid #cbd5e0;padding:3px"';
   const filas=[];
   d.lista.forEach(c=>{
-    c.prods.forEach(p=>filas.push(`<tr><td ${td}>${_cpcEsc(c.localidad)}</td><td ${td}>${_cpcEsc(c.cliente)}</td><td ${td}>${_cpcEsc(p.nombre)}</td><td ${td} align="center">${p.qty}</td><td ${td} align="right">${n(p.qty?p.monto/p.qty:0)}</td><td ${td} align="right">${n(p.monto)}</td></tr>`));
-    filas.push(`<tr><td colspan="5" style="background:#E1F5EE;font-weight:bold;border:1px solid #cbd5e0;padding:4px">TOTAL ${_cpcEsc(c.cliente)}</td><td align="right" style="background:#E1F5EE;font-weight:bold;border:1px solid #cbd5e0;padding:4px">${n(c.total)}</td></tr>`);
+    c.prods.forEach(p=>filas.push(`<tr><td ${td}>${_cpcEsc(c.localidad)}</td><td ${td}>${_cpcEsc(c.cliente)}</td><td ${td}>${_cpcEsc(p.nombre)}</td><td ${td} align="center">${p.qty}</td><td ${td} align="right">${p.costoU?n(p.costoU):'sin costo'}</td><td ${td} align="right">${n(p.costoT)}</td></tr>`));
+    filas.push(`<tr><td colspan="5" style="background:#E1F5EE;font-weight:bold;border:1px solid #cbd5e0;padding:4px">TOTAL ${_cpcEsc(c.cliente)}</td><td align="right" style="background:#E1F5EE;font-weight:bold;border:1px solid #cbd5e0;padding:4px">${n(c.costo)}</td></tr>`);
   });
   const html=`<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body>
   <table style="border-collapse:collapse;font-family:Arial;font-size:11pt">
   <tr><td colspan="6" style="font-size:15pt;font-weight:bold;color:#1D9E75">Yick Distribuidora · Compras por clienta · ${_cpcEsc(d.nombreMes)}</td></tr><tr><td colspan="6"></td></tr>
-  <tr><th ${th}>Localidad</th><th ${th} width="160">Clienta</th><th ${th} width="360">Producto</th><th ${th}>Cantidad</th><th ${th}>Precio unit.</th><th ${th}>Total</th></tr>
+  <tr><th ${th}>Localidad</th><th ${th} width="160">Clienta</th><th ${th} width="360">Producto</th><th ${th}>Cantidad</th><th ${th}>Costo unit.</th><th ${th}>Costo total</th></tr>
   ${filas.join('')}
-  <tr><td colspan="5" style="background:#1D9E75;color:#fff;font-weight:bold;padding:4px">TOTAL GENERAL</td><td align="right" style="background:#1D9E75;color:#fff;font-weight:bold;padding:4px">${n(d.total)}</td></tr>
+  <tr><td colspan="5" style="background:#1D9E75;color:#fff;font-weight:bold;padding:4px">TOTAL A INVERTIR (costo)</td><td align="right" style="background:#1D9E75;color:#fff;font-weight:bold;padding:4px">${n(d.costo)}</td></tr>
   </table></body></html>`;
   const blob=new Blob(['﻿'+html],{type:'application/vnd.ms-excel;charset=utf-8;'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
@@ -3589,10 +3592,10 @@ window.imprimirComprasClientas=()=>{
   td,th{padding:3px 4px;border-top:1px solid #edf2f7}th{text-align:left;color:#718096}.r{text-align:right}
   @media print{.noprint{display:none}}</style></head><body>
   <div class="noprint" style="background:#fef3c7;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:13px"><button onclick="window.print()" style="padding:7px 12px;border:0;border-radius:6px;background:#1D9E75;color:#fff;font-weight:700;cursor:pointer">🖨 Imprimir / Guardar PDF</button> Para PDF: en "Destino" elegí <b>Guardar como PDF</b>.</div>
-  <h2>Yick Distribuidora · Compras por clienta</h2><p>${_cpcEsc(d.nombreMes)} · Total: <b>${pesos(d.total)}</b></p>
+  <h2>Yick Distribuidora · Compras por clienta</h2><p>${_cpcEsc(d.nombreMes)} · Total a invertir (costo): <b>${pesos(d.costo)}</b></p>
   ${d.lista.map(c=>{let h='';if(c.localidad!==loc){loc=c.localidad;h=`<h3>📍 ${_cpcEsc(loc)}</h3>`;}
-  return h+`<div class="c"><div class="c-h"><span>${_cpcEsc(c.cliente)}</span><span>${pesos(c.total)}</span></div><table><tr><th>Producto</th><th>Cant.</th><th class="r">Precio</th><th class="r">Total</th></tr>
-  ${c.prods.map(p=>`<tr><td>${_cpcEsc(p.nombre)}</td><td>${p.qty}</td><td class="r">${pesos(p.qty?p.monto/p.qty:0)}</td><td class="r">${pesos(p.monto)}</td></tr>`).join('')}</table></div>`;}).join('')}
+  return h+`<div class="c"><div class="c-h"><span>${_cpcEsc(c.cliente)}</span><span>Costo ${pesos(c.costo)}</span></div><table><tr><th>Producto</th><th>Cant.</th><th class="r">Costo unit.</th><th class="r">Costo total</th></tr>
+  ${c.prods.map(p=>`<tr><td>${_cpcEsc(p.nombre)}</td><td>${p.qty}</td><td class="r">${p.costoU?pesos(p.costoU):'sin costo'}</td><td class="r">${pesos(p.costoT)}</td></tr>`).join('')}</table></div>`;}).join('')}
   </body></html>`);
   w.document.close();
 };
