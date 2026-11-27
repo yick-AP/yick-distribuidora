@@ -495,6 +495,19 @@ input[readonly]{background:#f7fafc;color:var(--gris)}
           </div>
           <div id="cpc-localidades" style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px"></div>
         </div>
+        <div class="card" style="margin-bottom:10px">
+          <div style="font-weight:700;margin-bottom:6px">📈 Promedio mensual por producto</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <label style="font-size:11px;color:var(--gris)">Meses a promediar (hasta el mes elegido)</label>
+              <select id="cpc-meses"><option value="3">Últimos 3 meses</option><option value="6" selected>Últimos 6 meses</option><option value="12">Últimos 12 meses</option></select>
+            </div>
+            <button class="btn btn-sm btn-primary" onclick="renderPromedioMensual()">Calcular</button>
+            <button class="btn btn-sm btn-info" onclick="exportarPromedioMensual()">📊 Excel</button>
+          </div>
+          <div style="font-size:11px;color:var(--gris);margin-top:4px">Usa la marca y las localidades tildadas arriba.</div>
+          <div id="cpc-promedio" style="margin-top:10px"></div>
+        </div>
         <div id="cpc-resultado"><div class="empty">Elegí un mes y las localidades</div></div>
       </div>
       <!-- VENTAS POR ZONA -->
@@ -3571,6 +3584,68 @@ window.renderComprasClientas=()=>{
       </table></div>`;
   }).join('');
 };
+
+function calcularPromedioMensual(){
+  const mes=document.getElementById('cpc-mes')?.value; if(!mes) return null;
+  const N=parseInt(document.getElementById('cpc-meses')?.value)||6;
+  const [a,m]=mes.split('-').map(Number);
+  const meses=[];
+  for(let i=N-1;i>=0;i--){const d=new Date(a,m-1-i,1);meses.push({y:d.getFullYear(),m:d.getMonth(),label:d.toLocaleDateString('es-AR',{month:'short',year:'2-digit'})});}
+  const desde=new Date(meses[0].y,meses[0].m,1,0,0,0), hasta=new Date(a,m,0,23,59,59);
+  const sel=new Set([...document.querySelectorAll('#cpc-localidades input:checked')].map(i=>_cpcNorm(i.value)));
+  const marcaSel=_cpcNorm(document.getElementById('cpc-marca')?.value);
+  const prods={};
+  ventas.forEach(v=>{
+    if(v.anulada||v.tipo==='saldo_inicial'||!v.fecha?.toDate) return;
+    const f=v.fecha.toDate(); if(f<desde||f>hasta) return;
+    const cli=clientes.find(c=>c.nombre===v.cliente);
+    const loc=(cli?.localidad||'').trim();
+    if(!loc||!sel.has(_cpcNorm(loc))) return;
+    const idx=meses.findIndex(x=>x.y===f.getFullYear()&&x.m===f.getMonth()); if(idx<0) return;
+    (v.items||[]).forEach(it=>{
+      const pr=productos.find(x=>x.id===it.id)||productos.find(x=>x.nombre===it.nombre);
+      if(marcaSel&&_cpcNorm(pr?.marca)!==marcaSel) return;
+      const n=it.nombre||it.id||'?';
+      if(!prods[n]) prods[n]={nombre:n,porMes:meses.map(()=>0),total:0,costoU:pr?.costo||0};
+      prods[n].porMes[idx]+=(it.qty||0); prods[n].total+=(it.qty||0);
+    });
+  });
+  const lista=Object.values(prods).map(p=>({...p,prom:p.total/N,costoProm:(p.total/N)*p.costoU})).sort((x,y)=>y.prom-x.prom);
+  return {lista,meses,N,costoProm:lista.reduce((s,p)=>s+p.costoProm,0)};
+}
+window.renderPromedioMensual=()=>{
+  const el=document.getElementById('cpc-promedio'); if(!el) return;
+  const d=calcularPromedioMensual();
+  if(!d||d.lista.length===0){el.innerHTML='<div class="empty">No hay ventas en ese período para la marca y localidades elegidas</div>';return;}
+  const pesos=n=>'$'+Math.round(n||0).toLocaleString('es-AR');
+  const f1=n=>(Math.round(n*10)/10).toLocaleString('es-AR');
+  el.innerHTML=`<div style="background:var(--verde-light);border-radius:8px;padding:8px 12px;margin-bottom:8px;display:flex;justify-content:space-between;font-size:12px;color:var(--verde-dark)"><span>Inversión promedio por mes (costo)</span><strong style="font-size:15px">${pesos(d.costoProm)}</strong></div>
+  <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:${300+d.meses.length*45}px">
+  <tr style="color:var(--gris)"><th style="text-align:left">Producto</th>${d.meses.map(x=>`<th style="width:42px">${x.label}</th>`).join('')}<th style="width:50px">Total</th><th style="width:60px">Prom./mes</th><th style="text-align:right;width:85px">Costo prom./mes</th></tr>
+  ${d.lista.map(p=>`<tr style="border-top:1px solid #f0f4f8"><td style="padding:3px 0">${_cpcEsc(p.nombre)}</td>${p.porMes.map(q=>`<td style="text-align:center">${q||'-'}</td>`).join('')}<td style="text-align:center">${p.total}</td><td style="text-align:center"><b>${f1(p.prom)}</b></td><td style="text-align:right">${p.costoU?pesos(p.costoProm):'<span style="color:#dc2626">sin costo</span>'}</td></tr>`).join('')}
+  </table></div>`;
+};
+window.exportarPromedioMensual=()=>{
+  const d=calcularPromedioMensual();
+  if(!d||d.lista.length===0){alert('No hay datos. Apretá Calcular y revisá que haya ventas.');return;}
+  const n=v=>String(Math.round((v||0)*100)/100).replace('.',',');
+  const th='style="background:#1D9E75;color:#ffffff;font-weight:bold;border:1px solid #0F6E56;padding:4px"';
+  const td='style="border:1px solid #cbd5e0;padding:3px"';
+  const marca=document.getElementById('cpc-marca')?.value||'Todas las marcas';
+  const filas=d.lista.map(p=>`<tr><td ${td}>${_cpcEsc(p.nombre)}</td>${p.porMes.map(q=>`<td ${td} align="center">${q}</td>`).join('')}<td ${td} align="center">${p.total}</td><td ${td} align="center">${n(p.prom)}</td><td ${td} align="right">${p.costoU?n(p.costoU):'sin costo'}</td><td ${td} align="right">${n(p.costoProm)}</td></tr>`).join('');
+  const nc=d.meses.length+5;
+  const html=`<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body><table style="border-collapse:collapse;font-family:Arial;font-size:11pt">
+  <tr><td colspan="${nc}" style="font-size:15pt;font-weight:bold;color:#1D9E75">Yick Distribuidora · Promedio mensual por producto · ${_cpcEsc(marca)}</td></tr><tr><td colspan="${nc}"></td></tr>
+  <tr><th ${th} width="360">Producto</th>${d.meses.map(x=>`<th ${th}>${x.label}</th>`).join('')}<th ${th}>Total</th><th ${th}>Promedio/mes</th><th ${th}>Costo unit.</th><th ${th}>Costo prom./mes</th></tr>
+  ${filas}
+  <tr><td colspan="${nc-1}" style="background:#1D9E75;color:#fff;font-weight:bold;padding:4px">INVERSIÓN PROMEDIO POR MES (costo)</td><td align="right" style="background:#1D9E75;color:#fff;font-weight:bold;padding:4px">${n(d.costoProm)}</td></tr>
+  </table></body></html>`;
+  const blob=new Blob(['﻿'+html],{type:'application/vnd.ms-excel;charset=utf-8;'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='promedio-mensual-'+marca.replace(/[^\w]+/g,'_')+'.xls';
+  a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+};
+
 window.exportarComprasClientas=()=>{
   const d=calcularComprasClientas();
   if(!d||d.lista.length===0){alert('No hay datos para exportar. Elegí un mes y localidades con ventas.');return;}
