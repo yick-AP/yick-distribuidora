@@ -436,6 +436,7 @@ input[readonly]{background:#f7fafc;color:var(--gris)}
         <button class="tab" onclick="tabInteligente(this,'contactar')">📲 Clientes a contactar</button>
         <button class="tab" onclick="tabInteligente(this,'inmovilizados')">⚠️ Inmovilizados</button>
         <button class="tab" onclick="tabInteligente(this,'zonas')">📍 Ventas por zona</button>
+        <button class="tab" onclick="tabInteligente(this,'clientas')">🧾 Compras por clienta</button>
       </div>
 
       <!-- COMPRA INTELIGENTE -->
@@ -475,6 +476,23 @@ input[readonly]{background:#f7fafc;color:var(--gris)}
         <div id="ci-inmovilizados-lista"><div class="empty">Analizando...</div></div>
       </div>
 
+      <!-- COMPRAS POR CLIENTA -->
+      <div id="inteligente-clientas" style="display:none">
+        <div class="card" style="margin-bottom:10px">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+            <div style="display:flex;flex-direction:column;gap:2px;min-width:150px">
+              <label style="font-size:11px;color:var(--gris)">Mes</label>
+              <input type="month" id="cpc-mes" onchange="renderComprasClientas()">
+            </div>
+            <button class="btn btn-sm" onclick="cpcMarcarTodas(true)">Todas las localidades</button>
+            <button class="btn btn-sm" onclick="cpcMarcarTodas(false)">Ninguna</button>
+            <button class="btn btn-sm btn-info" onclick="exportarComprasClientas()">📊 Excel</button>
+            <button class="btn btn-sm btn-primary" onclick="imprimirComprasClientas()">🖨 Imprimir / PDF</button>
+          </div>
+          <div id="cpc-localidades" style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px"></div>
+        </div>
+        <div id="cpc-resultado"><div class="empty">Elegí un mes y las localidades</div></div>
+      </div>
       <!-- VENTAS POR ZONA -->
       <div id="inteligente-zonas" style="display:none">
         <div class="card" style="margin-bottom:10px">
@@ -3076,7 +3094,7 @@ const _origCargarDatos=cargarDatos;
 window.tabInteligente=(btn,tab)=>{
   document.querySelectorAll('#sec-inteligente .tab').forEach(t=>t.classList.remove('active'));
   btn.classList.add('active');
-  ['compra','contactar','inmovilizados','zonas'].forEach(t=>{
+  ['compra','contactar','inmovilizados','zonas','clientas'].forEach(t=>{
     const el=document.getElementById('inteligente-'+t);
     if(el) el.style.display=t===tab?'block':'none';
   });
@@ -3084,6 +3102,7 @@ window.tabInteligente=(btn,tab)=>{
   if(tab==='contactar') renderClientesContactar();
   if(tab==='inmovilizados') renderInmovilizados();
   if(tab==='zonas') renderVentasZona();
+  if(tab==='clientas') initComprasClientas();
 };
 
 // Analizar historial de ventas por producto/cliente
@@ -3470,6 +3489,112 @@ window.exportarZonaExcel=(modo)=>{
   a.href=URL.createObjectURL(blob);
   a.download=`${zona.replace(/[^\w]+/g,'_')}-${nombre}-${desdeStr}-a-${hastaStr}.csv`;
   a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+};
+
+
+// ============= COMPRAS POR CLIENTA (por mes y localidad) =============
+const _cpcNorm=t=>(t||'').toString().trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+const _cpcEsc=t=>String(t??'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+window.initComprasClientas=()=>{
+  const m=document.getElementById('cpc-mes');
+  if(m&&!m.value){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);m.value=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+  const box=document.getElementById('cpc-localidades'); if(!box) return;
+  const previas=new Set([...box.querySelectorAll('input:checked')].map(i=>i.value));
+  const primera=box.children.length===0;
+  const locs=[...new Set(clientes.map(c=>(c.localidad||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+  box.innerHTML=locs.map(l=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" style="width:auto" value="${_cpcEsc(l).replace(/"/g,'&quot;')}" ${primera||previas.has(l)?'checked':''} onchange="renderComprasClientas()">${_cpcEsc(l)}</label>`).join('')||'<span style="font-size:12px;color:var(--gris)">No hay clientes con localidad cargada</span>';
+  renderComprasClientas();
+};
+window.cpcMarcarTodas=(v)=>{document.querySelectorAll('#cpc-localidades input').forEach(i=>i.checked=v);renderComprasClientas();};
+function calcularComprasClientas(){
+  const mes=document.getElementById('cpc-mes')?.value; if(!mes) return null;
+  const [a,m]=mes.split('-').map(Number);
+  const desde=new Date(a,m-1,1,0,0,0), hasta=new Date(a,m,0,23,59,59);
+  const sel=new Set([...document.querySelectorAll('#cpc-localidades input:checked')].map(i=>_cpcNorm(i.value)));
+  const porCli={};
+  ventas.forEach(v=>{
+    if(v.anulada||v.tipo==='saldo_inicial'||!v.fecha?.toDate) return;
+    const f=v.fecha.toDate(); if(f<desde||f>hasta) return;
+    const cli=clientes.find(c=>c.nombre===v.cliente);
+    const loc=(cli?.localidad||'').trim();
+    if(!loc||!sel.has(_cpcNorm(loc))) return;
+    const k=v.cliente;
+    if(!porCli[k]) porCli[k]={cliente:k,localidad:loc,remitos:0,total:0,prods:{}};
+    porCli[k].remitos++; porCli[k].total+=(v.total||0);
+    (v.items||[]).forEach(it=>{
+      const n=it.nombre||it.id||'?';
+      if(!porCli[k].prods[n]) porCli[k].prods[n]={nombre:n,qty:0,monto:0};
+      porCli[k].prods[n].qty+=(it.qty||0); porCli[k].prods[n].monto+=(it.qty||0)*(it.precio||0);
+    });
+  });
+  const lista=Object.values(porCli).map(c=>({...c,prods:Object.values(c.prods).sort((x,y)=>x.nombre.localeCompare(y.nombre,'es'))}))
+    .sort((x,y)=>x.localidad.localeCompare(y.localidad,'es')||x.cliente.localeCompare(y.cliente,'es'));
+  const nombreMes=desde.toLocaleDateString('es-AR',{month:'long',year:'numeric'});
+  return {lista,nombreMes,total:lista.reduce((s,c)=>s+c.total,0)};
+}
+window.renderComprasClientas=()=>{
+  const el=document.getElementById('cpc-resultado'); if(!el) return;
+  const d=calcularComprasClientas();
+  if(!d){el.innerHTML='<div class="empty">Elegí un mes</div>';return;}
+  if(d.lista.length===0){el.innerHTML='<div class="empty">No hay ventas en '+d.nombreMes+' para las localidades elegidas</div>';return;}
+  const pesos=n=>'$'+(Math.round((n||0)*100)/100).toLocaleString('es-AR');
+  let locAct=null;
+  el.innerHTML=`<div style="background:var(--verde-light);border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;justify-content:space-between">
+      <div style="font-size:12px;color:var(--verde-dark);font-weight:600">${d.lista.length} clientas · ${d.nombreMes}</div>
+      <div style="font-size:16px;font-weight:700;color:var(--verde-dark)">${pesos(d.total)}</div></div>`+
+  d.lista.map(c=>{
+    let h='';
+    if(c.localidad!==locAct){locAct=c.localidad;h=`<div style="font-weight:700;font-size:15px;margin:14px 0 6px">📍 ${_cpcEsc(c.localidad)}</div>`;}
+    return h+`<div style="background:#fff;border-radius:10px;border:1px solid var(--borde);padding:10px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px"><strong>${_cpcEsc(c.cliente)}</strong><strong style="color:var(--verde-dark)">${pesos(c.total)}</strong></div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <tr style="color:var(--gris)"><th style="text-align:left;padding:2px 0">Producto</th><th style="width:40px">Cant.</th><th style="text-align:right;width:80px">Precio</th><th style="text-align:right;width:90px">Total</th></tr>
+        ${c.prods.map(p=>`<tr style="border-top:1px solid #f0f4f8"><td style="padding:3px 0">${_cpcEsc(p.nombre)}</td><td style="text-align:center">${p.qty}</td><td style="text-align:right">${pesos(p.qty?p.monto/p.qty:0)}</td><td style="text-align:right">${pesos(p.monto)}</td></tr>`).join('')}
+      </table></div>`;
+  }).join('');
+};
+window.exportarComprasClientas=()=>{
+  const d=calcularComprasClientas();
+  if(!d||d.lista.length===0){alert('No hay datos para exportar. Elegí un mes y localidades con ventas.');return;}
+  const n=v=>String(Math.round((v||0)*100)/100).replace('.',',');
+  const th='style="background:#1D9E75;color:#ffffff;font-weight:bold;border:1px solid #0F6E56;padding:4px"';
+  const td='style="border:1px solid #cbd5e0;padding:3px"';
+  const filas=[];
+  d.lista.forEach(c=>{
+    c.prods.forEach(p=>filas.push(`<tr><td ${td}>${_cpcEsc(c.localidad)}</td><td ${td}>${_cpcEsc(c.cliente)}</td><td ${td}>${_cpcEsc(p.nombre)}</td><td ${td} align="center">${p.qty}</td><td ${td} align="right">${n(p.qty?p.monto/p.qty:0)}</td><td ${td} align="right">${n(p.monto)}</td></tr>`));
+    filas.push(`<tr><td colspan="5" style="background:#E1F5EE;font-weight:bold;border:1px solid #cbd5e0;padding:4px">TOTAL ${_cpcEsc(c.cliente)}</td><td align="right" style="background:#E1F5EE;font-weight:bold;border:1px solid #cbd5e0;padding:4px">${n(c.total)}</td></tr>`);
+  });
+  const html=`<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body>
+  <table style="border-collapse:collapse;font-family:Arial;font-size:11pt">
+  <tr><td colspan="6" style="font-size:15pt;font-weight:bold;color:#1D9E75">Yick Distribuidora · Compras por clienta · ${_cpcEsc(d.nombreMes)}</td></tr><tr><td colspan="6"></td></tr>
+  <tr><th ${th}>Localidad</th><th ${th} width="160">Clienta</th><th ${th} width="360">Producto</th><th ${th}>Cantidad</th><th ${th}>Precio unit.</th><th ${th}>Total</th></tr>
+  ${filas.join('')}
+  <tr><td colspan="5" style="background:#1D9E75;color:#fff;font-weight:bold;padding:4px">TOTAL GENERAL</td><td align="right" style="background:#1D9E75;color:#fff;font-weight:bold;padding:4px">${n(d.total)}</td></tr>
+  </table></body></html>`;
+  const blob=new Blob(['﻿'+html],{type:'application/vnd.ms-excel;charset=utf-8;'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='compras-por-clienta-'+document.getElementById('cpc-mes').value+'.xls';
+  a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+};
+window.imprimirComprasClientas=()=>{
+  const d=calcularComprasClientas();
+  if(!d||d.lista.length===0){alert('No hay datos para imprimir.');return;}
+  const pesos=n=>'$'+(Math.round((n||0)*100)/100).toLocaleString('es-AR');
+  const w=window.open('','_blank'); if(!w){alert('Permití las ventanas emergentes para este sitio.');return;}
+  let loc=null;
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Compras por clienta · ${_cpcEsc(d.nombreMes)}</title>
+  <style>body{font-family:system-ui,sans-serif;padding:20px;color:#1a202c}h2{color:#1D9E75;margin:0 0 4px}
+  h3{margin:18px 0 6px;color:#0F6E56}.c{border:1px solid #cbd5e0;border-radius:6px;padding:8px;margin-bottom:10px;page-break-inside:avoid}
+  .c-h{display:flex;justify-content:space-between;font-weight:700;margin-bottom:4px}table{width:100%;border-collapse:collapse;font-size:12px}
+  td,th{padding:3px 4px;border-top:1px solid #edf2f7}th{text-align:left;color:#718096}.r{text-align:right}
+  @media print{.noprint{display:none}}</style></head><body>
+  <div class="noprint" style="background:#fef3c7;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:13px"><button onclick="window.print()" style="padding:7px 12px;border:0;border-radius:6px;background:#1D9E75;color:#fff;font-weight:700;cursor:pointer">🖨 Imprimir / Guardar PDF</button> Para PDF: en "Destino" elegí <b>Guardar como PDF</b>.</div>
+  <h2>Yick Distribuidora · Compras por clienta</h2><p>${_cpcEsc(d.nombreMes)} · Total: <b>${pesos(d.total)}</b></p>
+  ${d.lista.map(c=>{let h='';if(c.localidad!==loc){loc=c.localidad;h=`<h3>📍 ${_cpcEsc(loc)}</h3>`;}
+  return h+`<div class="c"><div class="c-h"><span>${_cpcEsc(c.cliente)}</span><span>${pesos(c.total)}</span></div><table><tr><th>Producto</th><th>Cant.</th><th class="r">Precio</th><th class="r">Total</th></tr>
+  ${c.prods.map(p=>`<tr><td>${_cpcEsc(p.nombre)}</td><td>${p.qty}</td><td class="r">${pesos(p.qty?p.monto/p.qty:0)}</td><td class="r">${pesos(p.monto)}</td></tr>`).join('')}</table></div>`;}).join('')}
+  </body></html>`);
+  w.document.close();
 };
 
 window.setZonaMes=()=>{
